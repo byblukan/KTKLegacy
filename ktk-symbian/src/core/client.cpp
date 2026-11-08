@@ -400,7 +400,7 @@ QVariant Client::quietCall(Http &http, Fn fn, const Seroval::Fields &fields)
 Session Client::signIn(const QString &rawLogin, const QString &rawPassword)
 {
     const QString login = rawLogin.trimmed();
-    const QString password = rawPassword.trimmed();
+    const QString password = rawPassword;   // as typed: spaces at its ends may be part of it
     QMap<QString, QString> jar;
     Http http;
     Seroval::Fields fields;

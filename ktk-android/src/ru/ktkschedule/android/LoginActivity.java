@@ -13,6 +13,10 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 
 public final class LoginActivity extends Activity {
+    /** The last signed-in login, offered again after the site ends the session; cleared on sign-out. */
+    static final String PREFS = "ui";
+    static final String LAST_LOGIN = "last_login";
+
     private EditText login;
     private EditText password;
     private Button button;
@@ -47,7 +51,7 @@ public final class LoginActivity extends Activity {
                 return false;
             }
         });
-        login.setText(getSharedPreferences("ui", MODE_PRIVATE).getString("last_login", ""));
+        login.setText(getSharedPreferences(PREFS, MODE_PRIVATE).getString(LAST_LOGIN, ""));
     }
 
     private void setBusy(boolean busy) {
@@ -81,7 +85,7 @@ public final class LoginActivity extends Activity {
                 }
                 setBusy(false);
                 if (session != null) {
-                    getSharedPreferences("ui", MODE_PRIVATE).edit().putString("last_login", session.login).commit();
+                    getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(LAST_LOGIN, session.login).commit();
                     openWeek();
                 } else {
                     Ui.alert(LoginActivity.this, KtkError.text(error));

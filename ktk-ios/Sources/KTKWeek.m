@@ -231,8 +231,10 @@ static NSString *KTKMarkSymbol(NSInteger mark) {
         for (NSDictionary *assignment in KTKArray(KTKDict(scope)[@"assignments"])) {
             NSString *date = KTKString(KTKDict(assignment)[@"date"]);
             id preset = assignment[@"presetId"];
-            if (date && [preset isKindOfClass:[NSNumber class]]) {
-                bells[date] = preset;
+            // Keyed by the yyyy-MM-dd part, like the Android and Symbian clients: a timestamp in
+            // either date must not lose the bell times.
+            if (date.length >= 10 && [preset isKindOfClass:[NSNumber class]]) {
+                bells[[date substringToIndex:10]] = preset;
             }
         }
     }
@@ -243,7 +245,8 @@ static NSString *KTKMarkSymbol(NSInteger mark) {
         if (!date.length) {
             continue;
         }
-        NSArray *times = bells[date] ? presets[bells[date]] : nil;
+        id presetId = date.length >= 10 ? bells[[date substringToIndex:10]] : nil;
+        NSArray *times = presetId ? presets[presetId] : nil;
         NSMutableArray *lessons = [NSMutableArray array];
 
         void (^add)(NSInteger, id, NSString *) = ^(NSInteger pair, id raw, NSString *fallbackSubgroup) {

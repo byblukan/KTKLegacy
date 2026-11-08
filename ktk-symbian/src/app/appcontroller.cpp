@@ -315,6 +315,8 @@ void AppController::signOut()
 {
     const Session old = m_client->session();
     m_client->signOutLocally();
+    // The remembered login goes too; it stays only when the site ends the session (loginRequired).
+    QSettings().remove(QLatin1String("lastLogin"));
     m_week = Week();
     m_error = KtkError();
     ++m_weekToken;

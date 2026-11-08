@@ -365,9 +365,8 @@ NSString *KTKErrorText(NSError *error) {
 #pragma mark - sign in / out
 
 - (void)signInWithLogin:(NSString *)login password:(NSString *)password completion:(void (^)(NSError *))completion {
-    NSCharacterSet *space = [NSCharacterSet whitespaceAndNewlineCharacterSet];
-    login = [login stringByTrimmingCharactersInSet:space];
-    password = [password stringByTrimmingCharactersInSet:space];
+    // The password goes as typed: spaces at its ends may be part of it.
+    login = [login stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         NSMutableDictionary *jar = [NSMutableDictionary dictionary];
         NSError *error = nil;

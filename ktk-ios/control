@@ -3,7 +3,7 @@ Name: KTKLegacy
 Version: 1.0.0
 Architecture: iphoneos-arm
 Description: Расписание, оценки, задания и файлы КТК (ktk.education-system.ru) для iOS 6.
-Maintainer: ktk-ios
-Author: ktk-ios
+Maintainer: byblukan
+Author: byblukan
 Section: Utilities
 Depends: firmware (>= 6.0)

@@ -19,7 +19,7 @@ static UIColor *KTKBadgeColor(NSString *badge) {
 #pragma mark - lesson cell
 
 @interface KTKLessonCell : UITableViewCell
-+ (CGFloat)heightForLesson:(KTKLesson *)lesson teacher:(BOOL)teacher;
++ (CGFloat)heightForLesson:(KTKLesson *)lesson teacher:(BOOL)teacher tableWidth:(CGFloat)tableWidth;
 - (void)showLesson:(KTKLesson *)lesson teacher:(BOOL)teacher;
 @end
 
@@ -63,8 +63,23 @@ static UIColor *KTKBadgeColor(NSString *badge) {
     return lines;
 }
 
-+ (CGFloat)heightForLesson:(KTKLesson *)lesson teacher:(BOOL)teacher {
-    return 34 + 17 * [self detailLinesForLesson:lesson teacher:teacher].count + 6;
+/// The details wrap when a line is too long for the cell (the grade badge makes it narrower),
+/// so the height comes from the text laid out at the detail label's width.
++ (CGFloat)heightForLesson:(KTKLesson *)lesson teacher:(BOOL)teacher tableWidth:(CGFloat)tableWidth {
+    NSString *details = [[self detailLinesForLesson:lesson teacher:teacher] componentsJoinedByString:@"\n"];
+    if (!details.length) {
+        return 44;
+    }
+    // Grouped cell margins, then the accessory (badge or disclosure indicator) with its padding,
+    // then the label's own 10 pt on each side. The reserve is generous, so the text is never cut.
+    CGFloat margins = UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad ? 90 : 20;
+    BOOL badge = !teacher && lesson.badgeText;
+    CGFloat accessory = badge ? 36 + 24 : 40;
+    CGFloat width = tableWidth - margins - accessory - 20;
+    CGSize size = [details sizeWithFont:[UIFont systemFontOfSize:13]
+                      constrainedToSize:CGSizeMake(MAX(width, 100), 10000)
+                          lineBreakMode:NSLineBreakByWordWrapping];
+    return MAX(44, 36 + ceil(size.height));
 }
 
 - (instancetype)initWithStyle:(UITableViewCellStyle)style reuseIdentifier:(NSString *)reuseIdentifier {
@@ -337,7 +352,7 @@ static UIColor *KTKBadgeColor(NSString *badge) {
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
     KTKLesson *lesson = [self lessonAt:indexPath];
     if (lesson) {
-        return [KTKLessonCell heightForLesson:lesson teacher:_week.teacher];
+        return [KTKLessonCell heightForLesson:lesson teacher:_week.teacher tableWidth:tableView.bounds.size.width];
     }
     if (!_sections.count) {
         CGSize size = [[self messageText] sizeWithFont:[UIFont systemFontOfSize:15]

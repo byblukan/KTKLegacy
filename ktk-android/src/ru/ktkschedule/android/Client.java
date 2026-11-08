@@ -348,7 +348,7 @@ final class Client {
 
     void signIn(final String rawLogin, final String rawPassword, final Callback<Session> callback) {
         final String login = rawLogin.trim();
-        final String password = rawPassword.trim();
+        final String password = rawPassword; // as typed: spaces at its ends may be part of it
         pool.execute(new Runnable() {
             @Override
             public void run() {
@@ -437,10 +437,15 @@ final class Client {
         });
     }
 
-    /** Ends the session on the site (best effort) and forgets it and every cached week and file. */
+    /**
+     * Ends the session on the site (best effort) and forgets it, every cached week and file, and the
+     * login remembered for the sign-in screen (kept when only the site ended the session).
+     */
     void signOut() {
         final Session old = session();
         signOutLocally();
+        context.getSharedPreferences(LoginActivity.PREFS, Context.MODE_PRIVATE).edit()
+            .remove(LoginActivity.LAST_LOGIN).commit();
         if (old != null && !old.sessionId.isEmpty()) {
             final Map<String, String> oldJar = new LinkedHashMap<String, String>(old.cookies);
             pool.execute(new Runnable() {
