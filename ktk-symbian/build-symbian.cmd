@@ -42,12 +42,14 @@ if errorlevel 1 exit /b 1
 rem Self-signed with the SDK's default certificate: the capabilities are user-grantable only.
 call createpackage.bat KTKLegacy_template.pkg release-armv5
 if errorlevel 1 exit /b 1
-if exist KTKLegacy.sis ( move /y KTKLegacy.sis KTKLegacy_%VER%.sis >nul & echo built KTKLegacy_%VER%.sis )
-del /q KTKLegacy_unsigned.sis 2>nul
 
-rem Anna: the Smart Installer wrapper fetches Qt and the Qt Quick Components if missing.
+rem Anna: the Smart Installer wrapper fetches Qt and the Qt Quick Components if missing. It embeds
+rem KTKLegacy.sis by that name, so it is built before the packages get their version in the name.
 if exist KTKLegacy_installer.pkg (
     call createpackage.bat KTKLegacy_installer.pkg release-armv5
     if exist KTKLegacy_installer.sis ( move /y KTKLegacy_installer.sis KTKLegacy_installer_%VER%.sis >nul & echo built KTKLegacy_installer_%VER%.sis )
     del /q KTKLegacy_installer_unsigned.sis 2>nul
 )
+if exist KTKLegacy.sis ( move /y KTKLegacy.sis KTKLegacy_%VER%.sis >nul & echo built KTKLegacy_%VER%.sis )
+del /q KTKLegacy_unsigned.sis 2>nul
+exit /b 0
