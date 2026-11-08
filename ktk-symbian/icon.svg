@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- KTKLegacy application icon - the same picture as the iOS (Resources/Icon*.png) and Android
+     (res/drawable-*/ic_launcher.png) icons, redrawn as vectors: the Symbian icon converter takes
+     SVG Tiny only, and text would depend on the phone's fonts, so the letters are shapes.
+     Coordinates are in the 144 px grid of Icon-72@2x.png. -->
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" baseProfile="tiny" width="44" height="44" viewBox="0 0 144 144">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="144" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6e92c4"/>
+      <stop offset="0.5" stop-color="#2c538b"/>
+      <stop offset="1" stop-color="#1c3a66"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="144" height="144" fill="url(#tile)"/>
+  <rect x="31" y="31" width="82" height="10" fill="#dce3ee"/>
+  <g fill="#ffffff">
+    <rect x="35" y="64" width="6.5" height="29"/>
+    <polygon points="51,64 57,64 44.29,79.5 38.29,79.5"/>
+    <polygon points="41.6668,76 48.6668,76 58.5829,93 51.5829,93"/>
+    <rect x="60" y="64" width="25" height="5"/>
+    <rect x="69" y="64" width="7" height="29"/>
+    <rect x="88" y="64" width="6.5" height="29"/>
+    <polygon points="104,64 110,64 97.29,79.5 91.29,79.5"/>
+    <polygon points="94.6668,76 101.667,76 111.583,93 104.583,93"/>
+  </g>
+</svg>

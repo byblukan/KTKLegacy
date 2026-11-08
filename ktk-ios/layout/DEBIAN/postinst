@@ -1,0 +1,6 @@
+#!/bin/sh
+# Make SpringBoard pick up the new app icon.
+if [ -x /usr/bin/uicache ]; then
+	su mobile -c /usr/bin/uicache 2>/dev/null || /usr/bin/uicache
+fi
+exit 0

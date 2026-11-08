@@ -1,0 +1,9 @@
+* text=auto
+*.sh   text eol=lf
+*.cmd  text eol=crlf
+*.bat  text eol=crlf
+*.png  binary
+*.PNG  binary
+*.jpg  binary
+*.a    binary
+ktk-symbian/*.txt text eol=crlf

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">KTKLegacy</string>
+    <string name="login_title">Вход</string>
+    <string name="login_site">ktk.education-system.ru</string>
+    <string name="login_hint">Логин с сайта</string>
+    <string name="password_hint">Пароль</string>
+    <string name="sign_in">Войти</string>
+    <string name="signing_in">Вход…</string>
+    <string name="login_footer">Логин и пароль те же, что на сайте колледжа. Пароль отправляется только на сайт и не сохраняется: приложение хранит лишь сессию.</string>
+    <string name="tab_pairs">Пары</string>
+    <string name="tab_grades">Оценки</string>
+    <string name="previous_week">‹</string>
+    <string name="next_week">›</string>
+    <string name="current_week">Сейчас</string>
+    <string name="refresh">Обновить</string>
+    <string name="sign_out">Выйти</string>
+    <string name="cancel">Отмена</string>
+</resources>

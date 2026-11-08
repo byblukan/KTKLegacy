@@ -1,0 +1,76 @@
+﻿Где взять Qt SDK 1.2.1 для сборки KTKLegacy под Symbian (Windows)
+===================================================================
+
+Официально Qt SDK 1.2.1 больше не раздаётся: сайт Nokia закрыт, на qt.io его нет.
+Копии сохранились на Internet Archive. Ссылки найдены поиском 07.11.2026 и заранее
+не проверялись, поэтому контрольную сумму сверяйте обязательно.
+
+
+1. Установщик
+-------------
+
+Internet Archive, «Nokia and Symbian SDKs and Dev tools - Part 2»:
+    https://archive.org/details/nokia_sdks_n_dev_tools2
+
+Файл: QtSdk-offline-win-x86-v1.2.1.exe (около 1,7 ГБ), полный офлайн-установщик.
+
+Проверка MD5 после скачивания (сумма из стороннего блога, официальной нет):
+    ef3c33cb8c5aa3104a83cec592da8cc1
+
+В PowerShell:
+    Get-FileHash QtSdk-offline-win-x86-v1.2.1.exe -Algorithm MD5
+
+
+2. Цель для Symbian (SymbianSR1Qt474)
+-------------------------------------
+
+build-symbian.cmd ищет папку:
+    C:\QtSDK\Symbian\SDKs\SymbianSR1Qt474
+
+По сообщениям пользователей, в офлайн-установщике может не быть Belle SDK.
+Если после установки этой папки нет, она есть отдельным архивом в Part 1:
+    https://archive.org/details/nokia_sdks_n_dev_tools
+    Файл: Belle_SDK_for_QtSDK_v1.2.1_SymbianSR1Qt474.7z
+Распакуйте его в C:\QtSDK\Symbian\SDKs\
+
+
+3. Советы по установке
+----------------------
+
+- Ставьте в C:\QtSDK (путь по умолчанию). Если SDK стоит в другом месте, перед
+  сборкой выполните:  set QTSDK=D:\путь\к\QtSDK
+- Проект кладите на тот же диск, что и SDK, в путь без пробелов и кириллицы,
+  например C:\work\ktk-symbian. Так требует сборочная система Symbian.
+- Если установщик зависает на 1%: сначала поставьте Qt SDK 1.2, а поверх него 1.2.1
+  (совет с форума Qt).
+- Сборка: запустите build-symbian.cmd из папки проекта. Получится KTKLegacy_<версия>.sis.
+  Подробности в README.md.
+- На телефоне включите: Настройки -> Приложения -> Установки -> Параметры установки ->
+  Установка ПО: Все.
+
+
+4. Инструкции и каталоги
+------------------------
+
+Разработка под Belle на Windows с QtSDK 1.2.1 (N8 Delight, 2016):
+    http://n8delight.blogspot.com/2016/01/symbian-development-2016-using-belle.html
+Перезалив инструментов разработки Symbian (N8 Delight):
+    http://n8delight.blogspot.com/2014/05/for-developers-re-up-of-symbian.html
+Установка QtSDK 1.2.1 офлайн-установщиком:
+    https://n9.dy.fi/2015/08/install-qtsdk-1-2-1-with-the-offline-installer/
+Каталог старых SDK (Symbian Archive):
+    https://mrrosset.github.io/Symbian-Archive/SDKs-Langs.html
+
+
+Источники
+---------
+
+https://archive.org/details/nokia_sdks_n_dev_tools2
+https://archive.org/details/nokia_sdks_n_dev_tools
+http://n8delight.blogspot.com/2016/01/symbian-development-2016-using-belle.html
+http://n8delight.blogspot.com/2014/05/for-developers-re-up-of-symbian.html
+https://n9.dy.fi/2015/08/install-qtsdk-1-2-1-with-the-offline-installer/
+https://mrrosset.github.io/Symbian-Archive/SDKs-Langs.html
+https://celpasopat40.wordpress.com/2020/11/19/qt-sdk-121-offline-installer-download/  (MD5)
+https://forum.qt.io/topic/21679/qt-installation-hangs-at-1-in-windows-7/9?page=1  (зависание на 1%)
+https://forum.qt.io/topic/21067/where-is-qt-sdk-1-2-1

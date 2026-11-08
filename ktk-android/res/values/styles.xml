@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="tint">#21457A</color>
+    <color name="link">#334F85</color>
+    <color name="secondary">#555555</color>
+    <color name="banner_text">#992619</color>
+    <color name="banner_background">#FFF4E5</color>
+
+    <style name="Theme.Ktk" parent="@android:style/Theme.Holo.Light.DarkActionBar">
+        <item name="android:actionBarStyle">@style/Ktk.ActionBar</item>
+    </style>
+
+    <style name="Ktk.ActionBar" parent="@android:style/Widget.Holo.Light.ActionBar.Solid.Inverse">
+        <item name="android:background">@color/tint</item>
+        <item name="android:backgroundStacked">@color/tint</item>
+        <item name="android:titleTextStyle">@style/Ktk.ActionBar.Title</item>
+        <item name="android:subtitleTextStyle">@style/Ktk.ActionBar.Subtitle</item>
+    </style>
+
+    <style name="Ktk.ActionBar.Title" parent="@android:style/TextAppearance.Holo.Widget.ActionBar.Title.Inverse" />
+
+    <style name="Ktk.ActionBar.Subtitle" parent="@android:style/TextAppearance.Holo.Widget.ActionBar.Subtitle.Inverse" />
+</resources>

@@ -1,0 +1,19 @@
+# Built packages: publish them in GitHub Releases, not in git
+*.apk
+*.sis
+*.sisx
+*.deb
+*.ipa
+
+# SDK installers and archives
+*.7z
+*.exe
+*.zip
+
+# OS / editor junk
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+.vscode/
+.idea/

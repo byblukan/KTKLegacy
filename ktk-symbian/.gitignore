@@ -1,0 +1,25 @@
+# Symbian build output (Qt for Symbian builds in the source directory)
+/epoc32/
+/bld.inf
+/*.mmp
+/*_reg.rss
+/*.rss
+/*.loc
+/*.pkg
+/*.sis
+/*.sisx
+/*_template.pkg
+/Makefile*
+/moc_*.cpp
+/qrc_*.cpp
+/*.o
+/.make.cache
+/.qmake.stash
+/ABLD.BAT
+/*.mif
+/*.mbm
+/*.rsc
+/*.r0*
+# desktop builds and the harness's data
+/build*/
+/ktk-data/
