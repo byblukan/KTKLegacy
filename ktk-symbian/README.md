@@ -47,6 +47,26 @@ build-symbian.cmd clean
 
 Если Symbian отказывается ставить пакет поверх старого, соберите с `bump` или удалите старую версию.
 
+## Сборка .sis (Linux, wine)
+
+Тот же `build-symbian.cmd` с тем же Qt SDK 1.2.1, только под wine. Нужны `wine`, `7z` и `python3`
+(Arch: `sudo pacman -S wine p7zip python`) и два файла из [QT-SDK.txt](QT-SDK.txt): офлайн-установщик
+и архив Belle SDK. Установщик не запускается: скрипт вынимает из него компилятор, Raptor и Perl.
+
+```sh
+./build-symbian-wine.sh setup ~/Загрузки/QtSdk-offline-win-x86-v1.2.1.exe \
+                              ~/Загрузки/Belle_SDK_for_QtSDK_v1.2.1_SymbianSR1Qt474.7z   # один раз, ~1 ГБ
+./build-symbian-wine.sh          # KTKLegacy_<версия>.sis и KTKLegacy_installer_<версия>.sis в этой папке
+./build-symbian-wine.sh bump     # сначала поднять последнюю цифру VERSION в KTKLegacy.pro
+./build-symbian-wine.sh check    # UID, версия, зависимости и права собранного пакета
+./build-symbian-wine.sh clean
+```
+
+SDK и префикс wine лежат в `~/.local/share/ktk-symbian-sdk` (другое место: `KTK_SYMBIAN_SDK=…`).
+Собирается копия проекта в `C:\work\ktk-symbian` внутри префикса: файлы проекта (без того, что
+в `.gitignore`) копируются туда перед каждой сборкой, готовые `.sis` возвращаются сюда.
+Проверено с wine 11: первая сборка занимает около минуты, пакет ставится и работает на Nokia N8 (Belle FP2).
+
 ## Проверка на ПК (Linux, Qt 5)
 
 Ядро (TLS, HTTP, seroval, клиент сайта) собирается и с Qt 5. Так протокол проверяется на живом

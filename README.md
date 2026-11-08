@@ -37,7 +37,7 @@ Android 4.1 и Nokia на Symbian.
 
 - **iOS** — `./build-mac.sh` на Mac с Xcode 4.5–4.6 или `make package` через theos на Linux. [ktk-ios/README.md](ktk-ios/README.md)
 - **Android** — `./build.sh`: JDK 17+ и Android SDK (build-tools, platform 16), без Gradle. [ktk-android/README.md](ktk-android/README.md)
-- **Symbian** — `build-symbian.cmd` на Windows с Qt SDK 1.2.1. Ядро можно проверить на Linux с Qt 5. [ktk-symbian/README.md](ktk-symbian/README.md), где взять SDK — [ktk-symbian/QT-SDK.txt](ktk-symbian/QT-SDK.txt)
+- **Symbian** — `build-symbian.cmd` на Windows или `./build-symbian-wine.sh` на Linux под wine, с Qt SDK 1.2.1. Ядро можно проверить на Linux с Qt 5. [ktk-symbian/README.md](ktk-symbian/README.md), где взять SDK — [ktk-symbian/QT-SDK.txt](ktk-symbian/QT-SDK.txt)
 
 ## Скриншоты
 
