@@ -1,6 +1,4 @@
-# KTKLegacy
-
-КТК для iOS 6.
+# KTKLegacy для iOS 6
 
 Клиент `ktk.education-system.ru` для iOS 6 (armv7): расписание на неделю, оценки, задания,
 вебинары и файлы. Протокол перенесён из бота [kurumihere/ktk-schedule](https://github.com/kurumihere/ktk-schedule)
@@ -66,4 +64,4 @@ make package            # -> packages/ru.ktkschedule.ios6_*.deb
 | `KTKSession` | сессия (cookie) в Keychain; пароль не хранится |
 | `KTK*ViewController` | вход, неделя (пары/оценки), пара (задание, вебинар, файлы через Quick Look) |
 
-Кэш недель и скачанные файлы лежат в `Library/Caches` и удаляются при выходе.
+Кэш недель и скачанные файлы лежат в `Library/Caches` и удаляются при выходе и при каждом входе.
