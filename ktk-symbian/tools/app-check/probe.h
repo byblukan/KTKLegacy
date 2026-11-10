@@ -13,7 +13,7 @@ class Probe : public QObject
 {
     Q_OBJECT
 public:
-    explicit Probe(AppController *app) : m_app(app), loginRequiredSeen(false)
+    explicit Probe(AppController *app) : loginRequiredSeen(false), m_app(app)
     {
         connect(app, SIGNAL(weekChanged()), this, SLOT(onWeek()));
         connect(app, SIGNAL(loginRequired(QString)), this, SLOT(onLoginRequired(QString)));
