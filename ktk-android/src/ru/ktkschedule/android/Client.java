@@ -109,7 +109,8 @@ final class Client {
     /** The week on screen, or its saved copy after the process was restarted. */
     Week shownWeek(String weekStart) {
         Week week = shown;
-        return week != null && week.weekStart.equals(weekStart) ? week : cachedWeek(weekStart);
+        Session session = session();
+        return week != null && week.weekStart.equals(weekStart) ? week : cachedWeek(weekStart, weekScope(session));
     }
 
     private synchronized Map<String, String> currentJar() {
@@ -398,6 +399,11 @@ final class Client {
                     session.teacherHash = session.student ? "" : (hash != null ? hash : "teacher");
                     String branch = Json.string(user.get("branch"));
                     session.branch = branch != null ? branch : "";
+                    String detectedSubgroup = findSubgroup(user);
+                    if (detectedSubgroup != null) {
+                        session.personalSubgroup = detectedSubgroup;
+                        session.subgroup = detectedSubgroup;
+                    }
                     if (session.cookies.isEmpty()) {
                         throw new KtkError(KtkError.Code.BAD_RESPONSE, null);
                     }
@@ -479,16 +485,62 @@ final class Client {
 
     // ---------------------------------------------------------------- weeks
 
-    private File weekCacheFile(String weekStart) {
-        return new File(new File(context.getCacheDir(), "ktk-weeks"), weekStart + ".json");
+    private static String findSubgroup(Object value) {
+        if (value instanceof Map) {
+            Map<?, ?> map = (Map<?, ?>) value;
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                String k = String.valueOf(entry.getKey()).toLowerCase();
+                if (k.contains("subgroup")) {
+                    String sub = Week.personalSubgroup(entry.getValue() != null ? String.valueOf(entry.getValue()) : null);
+                    if (sub != null) {
+                        return sub;
+                    }
+                }
+            }
+            for (Object child : map.values()) {
+                String sub = findSubgroup(child);
+                if (sub != null) {
+                    return sub;
+                }
+            }
+        } else if (value instanceof List) {
+            for (Object item : (List<?>) value) {
+                String sub = findSubgroup(item);
+                if (sub != null) {
+                    return sub;
+                }
+            }
+        }
+        return null;
+    }
+
+    String weekScope(Session session) {
+        if (session != null && session.student && session.group > 0
+                && ("all".equals(session.subgroup) || (!session.personalSubgroup.isEmpty() && !session.subgroup.equals(session.personalSubgroup)))) {
+            return "group-" + session.group;
+        }
+        return "personal";
+    }
+
+    private File weekCacheFile(String weekStart, String scope) {
+        String name = (scope != null && !scope.isEmpty()) ? weekStart + "-" + scope : weekStart;
+        return new File(new File(context.getCacheDir(), "ktk-weeks"), name + ".json");
     }
 
     /** The saved copy of a week, or null. Reads a file: fine on the main thread for these sizes. */
     Week cachedWeek(String weekStart) {
+        Session s = session();
+        return cachedWeek(weekStart, weekScope(s));
+    }
+
+    Week cachedWeek(String weekStart, String scope) {
         if (weekStart == null || !WEEK_START.matcher(weekStart).matches()) {
             return null;
         }
-        File file = weekCacheFile(weekStart);
+        File file = weekCacheFile(weekStart, scope);
+        if (!file.isFile()) {
+            file = weekCacheFile(weekStart, null);
+        }
         if (!file.isFile() || file.length() > 16L * 1024 * 1024) {
             return null;
         }
@@ -514,8 +566,8 @@ final class Client {
         }
     }
 
-    private void saveWeekPayload(Map<String, Object> payload, String weekStart) {
-        File file = weekCacheFile(weekStart);
+    private void saveWeekPayload(Map<String, Object> payload, String weekStart, String scope) {
+        File file = weekCacheFile(weekStart, scope);
         File partial = new File(file.getPath() + ".part");
         try {
             //noinspection ResultOfMethodCallIgnored
@@ -539,7 +591,11 @@ final class Client {
 
     private Map<String, Object> fetchWeek(String weekStart, Session session) throws KtkError {
         boolean teacher = !session.student;
-        Object value = call(teacher ? Fn.TEACHER : Fn.STUDENT, new Object[][]{{"weekStart", weekStart}}, null);
+        boolean useGroup = session.student && session.group > 0
+            && ("all".equals(session.subgroup) || (!session.personalSubgroup.isEmpty() && !session.subgroup.equals(session.personalSubgroup)));
+        Object value = useGroup
+            ? call(Fn.GROUP, new Object[][]{{"groupId", String.valueOf(session.group)}, {"weekStart", weekStart}}, null)
+            : call(teacher ? Fn.TEACHER : Fn.STUDENT, new Object[][]{{"weekStart", weekStart}}, null);
         KtkError server = serverError(value);
         if (server != null) {
             throw server;
@@ -638,6 +694,9 @@ final class Client {
             callback.done(null, new KtkError(KtkError.Code.LOGIN_REQUIRED, null));
             return;
         }
+        final String scope = weekScope(session);
+        final boolean useGroup = session.student && session.group > 0
+            && ("all".equals(session.subgroup) || (!session.personalSubgroup.isEmpty() && !session.subgroup.equals(session.personalSubgroup)));
         pool.execute(new Runnable() {
             @Override
             public void run() {
@@ -647,7 +706,17 @@ final class Client {
                     Map<String, Object> payload = fetchWeek(weekStart, session);
                     week = Week.fromPayload(payload, true);
                     if (week != null) {
-                        saveWeekPayload(payload, weekStart);
+                        saveWeekPayload(payload, weekStart, scope);
+                        if (session.student && !useGroup && session.personalSubgroup.isEmpty()) {
+                            String inferred = Week.inferSubgroup(week.days);
+                            if (inferred != null) {
+                                session.personalSubgroup = inferred;
+                                if (session.subgroup.isEmpty() || "left".equals(session.subgroup)) {
+                                    session.subgroup = inferred;
+                                }
+                                session.save(context);
+                            }
+                        }
                     } else {
                         error = new KtkError(KtkError.Code.BAD_RESPONSE, null);
                     }
@@ -658,7 +727,7 @@ final class Client {
                     error = new KtkError(KtkError.Code.BAD_RESPONSE, null);
                 }
                 if (week == null && error != null && error.code != KtkError.Code.LOGIN_REQUIRED) {
-                    week = cachedWeek(weekStart);
+                    week = cachedWeek(weekStart, scope);
                     if (week != null) {
                         week.offline = true;
                     }

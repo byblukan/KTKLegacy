@@ -16,6 +16,8 @@ namespace KTKLegacy
         public long   Group;
         public string TeacherHash = "";
         public string Branch      = "";
+        public string PersonalSubgroup = "";
+        public string Subgroup         = "";
 
         // ---------------------------------------------------------------- persistence
 
@@ -52,6 +54,10 @@ namespace KTKLegacy
                     session.Group       = Json.Number(d.ContainsKey("group") ? d["group"] : null, 0);
                     session.TeacherHash = OrEmpty(Json.Str(d.ContainsKey("teacherHash") ? d["teacherHash"] : null));
                     session.Branch      = OrEmpty(Json.Str(d.ContainsKey("branch")      ? d["branch"]      : null));
+                    session.PersonalSubgroup = OrEmpty(Json.Str(d.ContainsKey("personalSubgroup") ? d["personalSubgroup"] : null));
+                    session.Subgroup         = OrEmpty(Json.Str(d.ContainsKey("subgroup")         ? d["subgroup"]         : null));
+                    if (string.IsNullOrEmpty(session.Subgroup))
+                        session.Subgroup = string.IsNullOrEmpty(session.PersonalSubgroup) ? "left" : session.PersonalSubgroup;
                     return session;
                 }
             }
@@ -70,6 +76,8 @@ namespace KTKLegacy
                 d["group"]       = Group;
                 d["teacherHash"] = TeacherHash;
                 d["branch"]      = Branch;
+                d["personalSubgroup"] = PersonalSubgroup;
+                d["subgroup"]         = Subgroup;
 
                 using (var store = IsolatedStorageFile.GetUserStoreForApplication())
                 using (var stream = store.OpenFile(FileName, FileMode.Create, FileAccess.Write))

@@ -163,6 +163,8 @@ QVariantMap Session::toVariant() const
     d.insert(QLatin1String("group"), group);
     d.insert(QLatin1String("teacherHash"), teacherHash);
     d.insert(QLatin1String("branch"), branch);
+    d.insert(QLatin1String("personalSubgroup"), personalSubgroup);
+    d.insert(QLatin1String("subgroup"), subgroup);
     return d;
 }
 
@@ -180,6 +182,9 @@ Session Session::fromVariant(const QVariant &v)
     s.group = Json::number(at(d, "group"), 0);
     s.teacherHash = Json::string(at(d, "teacherHash"));
     s.branch = Json::string(at(d, "branch"));
+    s.personalSubgroup = Json::string(at(d, "personalSubgroup"));
+    s.subgroup = Json::string(at(d, "subgroup"));
+    if (s.subgroup.isEmpty()) s.subgroup = s.personalSubgroup.isEmpty() ? QLatin1String("left") : s.personalSubgroup;
     return s;
 }
 
@@ -397,6 +402,30 @@ QVariant Client::quietCall(Http &http, Fn fn, const Seroval::Fields &fields)
 
 // -- sign in / out -------------------------------------------------------------------------------
 
+static QString findSubgroup(const QVariant &value)
+{
+    if (value.type() == QVariant::Map) {
+        const QVariantMap map = value.toMap();
+        for (QVariantMap::const_iterator it = map.constBegin(); it != map.constEnd(); ++it) {
+            if (it.key().toLower().contains(QLatin1String("subgroup"))) {
+                QString sub = Week::personalSubgroup(it.value().toString());
+                if (!sub.isEmpty()) return sub;
+            }
+        }
+        for (QVariantMap::const_iterator it = map.constBegin(); it != map.constEnd(); ++it) {
+            QString sub = findSubgroup(it.value());
+            if (!sub.isEmpty()) return sub;
+        }
+    } else if (value.type() == QVariant::List) {
+        const QVariantList list = value.toList();
+        for (int i = 0; i < list.size(); ++i) {
+            QString sub = findSubgroup(list.at(i));
+            if (!sub.isEmpty()) return sub;
+        }
+    }
+    return QString();
+}
+
 Session Client::signIn(const QString &rawLogin, const QString &rawPassword)
 {
     const QString login = rawLogin.trimmed();
@@ -435,6 +464,11 @@ Session Client::signIn(const QString &rawLogin, const QString &rawPassword)
     const QString hash = Json::string(at(user, "hash"));
     session.teacherHash = session.student ? QString() : (hash.isNull() ? QString::fromLatin1("teacher") : hash);
     session.branch = Json::string(at(user, "branch"));
+    const QString detectedSubgroup = findSubgroup(user);
+    if (!detectedSubgroup.isEmpty()) {
+        session.personalSubgroup = detectedSubgroup;
+        session.subgroup = detectedSubgroup;
+    }
     if (session.cookies.isEmpty()) throw KtkError(KtkError::BadResponse);
 
     forgetCaches();
@@ -443,6 +477,13 @@ Session Client::signIn(const QString &rawLogin, const QString &rawPassword)
     ++m_generation;
     saveSessionLocked();
     return session;
+}
+
+void Client::setSubgroup(const QString &subgroup)
+{
+    QMutexLocker locker(&m_lock);
+    m_session.subgroup = subgroup;
+    saveSessionLocked();
 }
 
 void Client::signOutLocally()
@@ -476,10 +517,28 @@ void Client::forgetCaches()
 
 // -- weeks ---------------------------------------------------------------------------------------
 
+QString Client::weekScope(const Session &session) const
+{
+    if (session.student && session.group > 0
+            && (session.subgroup == QLatin1String("all") || (!session.personalSubgroup.isEmpty() && session.subgroup != session.personalSubgroup))) {
+        return QString::fromLatin1("group-%1").arg(session.group);
+    }
+    return QString::fromLatin1("personal");
+}
+
 Week Client::cachedWeek(const QString &weekStart) const
 {
+    return cachedWeek(weekStart, weekScope(session()));
+}
+
+Week Client::cachedWeek(const QString &weekStart, const QString &scope) const
+{
     if (!CollegeCalendar::isWeekStart(weekStart)) return Week();
-    const QByteArray data = readSmallFile(m_dataDir + QLatin1String("/weeks/") + weekStart + QLatin1String(".json"), 16 * 1024 * 1024);
+    QString path = m_dataDir + QLatin1String("/weeks/") + weekStart + (scope.isEmpty() ? QString() : QLatin1Char('-') + scope) + QLatin1String(".json");
+    QByteArray data = readSmallFile(path, 16 * 1024 * 1024);
+    if (data.isEmpty()) {
+        data = readSmallFile(m_dataDir + QLatin1String("/weeks/") + weekStart + QLatin1String(".json"), 16 * 1024 * 1024);
+    }
     if (data.isEmpty()) return Week();
     bool ok = false;
     const QVariant payload = Json::parse(data, &ok);
@@ -487,15 +546,25 @@ Week Client::cachedWeek(const QString &weekStart) const
     return Week::fromPayload(payload.toMap(), true);
 }
 
-void Client::saveWeekPayload(const QVariantMap &payload, const QString &weekStart)
+void Client::saveWeekPayload(const QVariantMap &payload, const QString &weekStart, const QString &scope)
 {
-    writeFileAtomically(m_dataDir + QLatin1String("/weeks/") + weekStart + QLatin1String(".json"), Json::serialize(payload));
+    QString path = m_dataDir + QLatin1String("/weeks/") + weekStart + (scope.isEmpty() ? QString() : QLatin1Char('-') + scope) + QLatin1String(".json");
+    writeFileAtomically(path, Json::serialize(payload));
 }
 
 QVariantMap Client::fetchWeek(Http &http, const QString &weekStart, const Session &session)
 {
     const bool teacher = !session.student;
-    const QVariant value = call(http, teacher ? Teacher : Student, fields1("weekStart", weekStart));
+    const bool useGroup = session.student && session.group > 0
+        && (session.subgroup == QLatin1String("all") || (!session.personalSubgroup.isEmpty() && session.subgroup != session.personalSubgroup));
+    Seroval::Fields fields;
+    if (useGroup) {
+        fields.append(qMakePair(QString::fromLatin1("groupId"), QVariant(QString::number(session.group))));
+        fields.append(qMakePair(QString::fromLatin1("weekStart"), QVariant(weekStart)));
+    } else {
+        fields = fields1("weekStart", weekStart);
+    }
+    const QVariant value = call(http, useGroup ? Group : (teacher ? Teacher : Student), fields);
     const KtkError server = serverError(value);
     if (server.isError()) throw server;
     if (!Json::isMap(value) || !Json::isList(at(value.toMap(), "days"))) throw KtkError(KtkError::BadResponse);
@@ -551,6 +620,9 @@ Week Client::loadWeek(const QString &weekStart, KtkError *error)
         *error = KtkError(KtkError::LoginRequired);
         return Week();
     }
+    const QString scope = weekScope(current);
+    const bool useGroup = current.student && current.group > 0
+        && (current.subgroup == QLatin1String("all") || (!current.personalSubgroup.isEmpty() && current.subgroup != current.personalSubgroup));
     const int generation = sessionGeneration();
     Week week;
     try {
@@ -558,13 +630,26 @@ Week Client::loadWeek(const QString &weekStart, KtkError *error)
         const QVariantMap payload = fetchWeek(http, weekStart, current);
         week = Week::fromPayload(payload, true);
         // Not after a sign-out meanwhile: the saved weeks belong to the session that asked.
-        if (!week.isNull() && sessionGeneration() == generation) saveWeekPayload(payload, weekStart);
+        if (!week.isNull() && sessionGeneration() == generation) {
+            saveWeekPayload(payload, weekStart, scope);
+            if (current.student && !useGroup && current.personalSubgroup.isEmpty()) {
+                const QString inferred = Week::inferSubgroup(week.days);
+                if (!inferred.isEmpty()) {
+                    QMutexLocker locker(&m_lock);
+                    m_session.personalSubgroup = inferred;
+                    if (m_session.subgroup.isEmpty() || m_session.subgroup == QLatin1String("left")) {
+                        m_session.subgroup = inferred;
+                    }
+                    saveSessionLocked();
+                }
+            }
+        }
         else *error = KtkError(KtkError::BadResponse);
     } catch (const KtkError &e) {
         *error = e;
     }
     if (week.isNull() && error->isError() && !error->isLoginRequired()) {
-        week = cachedWeek(weekStart);
+        week = cachedWeek(weekStart, scope);
         if (!week.isNull()) week.offline = true;
     }
     return week;

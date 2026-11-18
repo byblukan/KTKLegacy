@@ -122,6 +122,7 @@ namespace KTKLegacy
                 GoToLoginPage();
                 return;
             }
+            UpdateMenu();
             if (_weekStart == null)
                 ShowWeek(CollegeCalendar.CurrentWeekStart());
         }
@@ -174,6 +175,48 @@ namespace KTKLegacy
                                + "&index=" + row.LessonIndex, UriKind.Relative));
                 }
             }
+        }
+
+        private void UpdateMenu()
+        {
+            var appbar = ApplicationBar;
+            if (appbar == null) return;
+            appbar.MenuItems.Clear();
+
+            var session = KtkClient.Shared.Session;
+            if (session != null && session.Student)
+            {
+                string sub = session.Subgroup ?? "left";
+
+                var mi1 = new ApplicationBarMenuItem((sub == "left" ? "✓ " : "") + "1 подгруппа");
+                mi1.Click += (s, e) => SetSubgroup("left");
+                appbar.MenuItems.Add(mi1);
+
+                var mi2 = new ApplicationBarMenuItem((sub == "right" ? "✓ " : "") + "2 подгруппа");
+                mi2.Click += (s, e) => SetSubgroup("right");
+                appbar.MenuItems.Add(mi2);
+
+                var miAll = new ApplicationBarMenuItem((sub == "all" ? "✓ " : "") + "Обе подгруппы");
+                miAll.Click += (s, e) => SetSubgroup("all");
+                appbar.MenuItems.Add(miAll);
+            }
+
+            var miLogout = new ApplicationBarMenuItem("Выйти");
+            miLogout.Click += SignOutMenuItem_Click;
+            appbar.MenuItems.Add(miLogout);
+        }
+
+        private void SetSubgroup(string subgroup)
+        {
+            var session = KtkClient.Shared.Session;
+            if (session == null || session.Subgroup == subgroup) return;
+            KtkClient.Shared.SetSubgroup(subgroup);
+            UpdateMenu();
+            if (_week != null)
+            {
+                Render(_week);
+            }
+            LoadWeek();
         }
 
         private async void SignOutMenuItem_Click(object sender, EventArgs e)
@@ -252,11 +295,14 @@ namespace KTKLegacy
 
             if (week == null) return;
             var allLessons = week.AllLessons();
-            _allLessons   = allLessons;
+            _allLessons    = allLessons;
+
+            var session = KtkClient.Shared.Session;
+            string selectedSubgroup = session != null ? session.Subgroup : "left";
 
             string prevPairsDay  = null;
             string prevGradesDay = null;
-            int index = 0;
+            int globalIndex = 0;
 
             foreach (var day in week.Days)
             {
@@ -266,31 +312,37 @@ namespace KTKLegacy
 
                 foreach (var l in day.Lessons)
                 {
-                    // Pairs tab
-                    var pRow = MakePairsRow(l, index, day.Date != prevPairsDay ? dayTitle : null);
-                    _pairsRows.Add(pRow);
-                    prevPairsDay = day.Date;
-
-                    // Grades tab
-                    if (l.HasGrade())
+                    if (Week.MatchesSubgroup(l, selectedSubgroup, week.Teacher))
                     {
-                        var gRow = MakePairsRow(l, index, day.Date != prevGradesDay ? dayTitle : null);
-                        _gradesRows.Add(gRow);
-                        prevGradesDay = day.Date;
+                        // Pairs tab
+                        var pRow = MakePairsRow(l, globalIndex, day.Date != prevPairsDay ? dayTitle : null);
+                        _pairsRows.Add(pRow);
+                        prevPairsDay = day.Date;
+
+                        // Grades tab
+                        if (l.HasGrade())
+                        {
+                            var gRow = MakePairsRow(l, globalIndex, day.Date != prevGradesDay ? dayTitle : null);
+                            _gradesRows.Add(gRow);
+                            prevGradesDay = day.Date;
+                        }
                     }
-                    index++;
+                    globalIndex++;
                 }
             }
+            UpdateMenu();
         }
 
         private static LessonRow MakePairsRow(Lesson l, int index, string dayHeader)
         {
             // Details line: time + hall + teacher
             var parts = new List<string>();
-            if (l.TimeText() != null) parts.Add(l.TimeText());
-            if (l.Remote)             parts.Add("Дистанционно");
+            if (l.TimeText() != null)     parts.Add(l.TimeText());
+            if (l.IsIndependent())        parts.Add("СРС");
+            if (l.Remote)                 parts.Add("Дистанционно");
             else if (l.HallText() != null) parts.Add(l.HallText());
             if (l.ShortTeacher() != null) parts.Add(l.ShortTeacher());
+            if (l.SubgroupText() != null) parts.Add(l.SubgroupText());
 
             return new LessonRow
             {

@@ -70,6 +70,7 @@ namespace
         if (!lesson.timeText().isEmpty()) first << lesson.timeText();
         if (lesson.remote) first << QString::fromUtf8("дистанционно");
         else if (!lesson.hallText().isEmpty()) first << QString::fromUtf8("каб. ") + lesson.hallText();
+        if (lesson.isIndependent()) first << QString::fromUtf8("СРС");
         if (!lesson.subgroupText().isEmpty()) first << lesson.subgroupText();
         if (!first.isEmpty()) lines << first.join(QString::fromUtf8(" · "));
         const QString who = teacher
@@ -405,12 +406,15 @@ void AppController::rebuild()
     QVariantList rows;
     bool anyDay = false;
     int lessonIndex = 0;
+    const Session session = m_client->session();
+    const QString subgroup = session.subgroup;
     if (!m_week.isNull()) {
         for (int d = 0; d < m_week.days.size(); ++d) {
             const Day &day = m_week.days.at(d);
             QVariantList lessons;
             for (int i = 0; i < day.lessons.size(); ++i, ++lessonIndex) {
                 const Lesson &lesson = day.lessons.at(i);
+                if (!Week::matchesSubgroup(lesson, subgroup, m_week.teacher)) continue;
                 if (m_gradesMode && !lesson.hasGrade()) continue;
                 QVariantMap row = item("lesson");
                 row.insert(QLatin1String("title"), QString::number(lesson.pair) + QLatin1String(". ") + lesson.discipline);
@@ -556,4 +560,31 @@ void AppController::copyText(const QString &text)
 {
     QApplication::clipboard()->setText(text);
     emit notice(QString::fromUtf8("Скопировано"));
+}
+
+bool AppController::isStudent() const
+{
+    return m_client->session().student;
+}
+
+int AppController::subgroupIndex() const
+{
+    const QString sub = m_client->session().subgroup;
+    if (sub == QLatin1String("right")) return 1;
+    if (sub == QLatin1String("all")) return 2;
+    return 0; // left / 1
+}
+
+void AppController::setSubgroupIndex(int index)
+{
+    QString chosen = QLatin1String("left");
+    if (index == 1) chosen = QLatin1String("right");
+    else if (index == 2) chosen = QLatin1String("all");
+
+    if (m_client->session().subgroup != chosen) {
+        m_client->setSubgroup(chosen);
+        emit subgroupChanged();
+        rebuild();
+        reload();
+    }
 }

@@ -45,7 +45,13 @@
 - (NSString *)hallText;      // "18А (IT)" or nil
 - (BOOL)hasGrade;
 - (BOOL)hasTaskContent;
+- (BOOL)isIndependent;
 @end
+
+NSString *KTKPersonalSubgroup(NSString *value);
+NSString *KTKInferSubgroup(NSArray *days);
+BOOL KTKMatchesSubgroup(KTKLesson *lesson, NSString *selectedSubgroup, BOOL teacher);
+NSArray *KTKVisibleLessons(NSArray *lessons, NSString *selectedSubgroup, BOOL teacher);
 
 @interface KTKDay : NSObject
 @property (nonatomic, copy) NSString *date; // yyyy-MM-dd

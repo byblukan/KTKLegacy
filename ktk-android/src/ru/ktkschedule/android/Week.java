@@ -23,11 +23,77 @@ final class Week {
     boolean offline;
 
     List<Lesson> allLessons() {
+        return allLessons(null);
+    }
+
+    List<Lesson> allLessons(String selectedSubgroup) {
         List<Lesson> all = new ArrayList<Lesson>();
         for (Day day : days) {
-            all.addAll(day.lessons);
+            for (Lesson l : day.lessons) {
+                if (matchesSubgroup(l, selectedSubgroup, teacher)) {
+                    all.add(l);
+                }
+            }
         }
         return all;
+    }
+
+    static String personalSubgroup(String value) {
+        if (value == null) {
+            return null;
+        }
+        String clean = value.toLowerCase().replace(" ", "").replace("_", "").replace("-", "");
+        if (clean.equals("1") || clean.equals("left") || clean.equals("first") || clean.equals("one")
+                || clean.equals("первая") || clean.equals("первый") || clean.equals("1я") || clean.equals("1ая")
+                || clean.equals("1ый") || clean.equals("1подгруппа") || clean.equals("1яподгруппа")
+                || clean.equals("1аяподгруппа") || clean.equals("подгруппа1")) {
+            return "left";
+        }
+        if (clean.equals("2") || clean.equals("right") || clean.equals("second") || clean.equals("two")
+                || clean.equals("вторая") || clean.equals("второй") || clean.equals("2я") || clean.equals("2ая")
+                || clean.equals("2ой") || clean.equals("2подгруппа") || clean.equals("2яподгруппа")
+                || clean.equals("2аяподгруппа") || clean.equals("подгруппа2")) {
+            return "right";
+        }
+        return null;
+    }
+
+    static String inferSubgroup(List<Day> days) {
+        String found = null;
+        for (Day day : days) {
+            for (Lesson lesson : day.lessons) {
+                String sub = personalSubgroup(lesson.subgroup);
+                if (sub != null) {
+                    if (found == null) {
+                        found = sub;
+                    } else if (!found.equals(sub)) {
+                        return null;
+                    }
+                }
+            }
+        }
+        return found;
+    }
+
+    static boolean matchesSubgroup(Lesson lesson, String selectedSubgroup, boolean teacher) {
+        if (teacher || selectedSubgroup == null || "all".equals(selectedSubgroup)) {
+            return true;
+        }
+        String sub = personalSubgroup(lesson.subgroup);
+        return sub == null || sub.equals(selectedSubgroup);
+    }
+
+    static List<Lesson> visibleLessons(List<Lesson> lessons, String selectedSubgroup, boolean teacher) {
+        if (teacher || selectedSubgroup == null || "all".equals(selectedSubgroup)) {
+            return lessons;
+        }
+        List<Lesson> out = new ArrayList<Lesson>();
+        for (Lesson l : lessons) {
+            if (matchesSubgroup(l, selectedSubgroup, teacher)) {
+                out.add(l);
+            }
+        }
+        return out;
     }
 
     /**
@@ -178,17 +244,6 @@ final class Week {
                     return a.pair < b.pair ? -1 : a.pair > b.pair ? 1 : 0;
                 }
             });
-            if (filter && !teacher && !lessons.isEmpty()) {
-                boolean allRemote = true;
-                boolean anyContent = false;
-                for (Lesson lesson : lessons) {
-                    allRemote = allRemote && lesson.remote;
-                    anyContent = anyContent || lesson.hasTaskContent();
-                }
-                if (allRemote && !anyContent) {
-                    lessons.clear();
-                }
-            }
             Day day = new Day();
             day.date = date.substring(0, Math.min(date.length(), 10));
             day.lessons = lessons;

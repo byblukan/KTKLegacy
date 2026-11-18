@@ -240,11 +240,16 @@ bool Lesson::hasTaskContent() const
     return hasHomework || !task.isEmpty() || !webinar.isEmpty() || !files.isEmpty();
 }
 
+bool Lesson::isIndependent() const
+{
+    return pairTypeId == 9 || pairTypeName.toLower().contains(QString::fromUtf8("самосто"));
+}
+
 QString Lesson::subgroupText() const
 {
-    const QString s = subgroup.toLower();
-    if (s == QLatin1String("left") || s == QLatin1String("1")) return QString::fromUtf8("1 подгруппа");
-    if (s == QLatin1String("right") || s == QLatin1String("2")) return QString::fromUtf8("2 подгруппа");
+    const QString s = Week::personalSubgroup(subgroup);
+    if (s == QLatin1String("left")) return QString::fromUtf8("1 подгруппа");
+    if (s == QLatin1String("right")) return QString::fromUtf8("2 подгруппа");
     return QString();
 }
 
@@ -272,6 +277,74 @@ QList<Lesson> Week::allLessons() const
     QList<Lesson> all;
     for (int i = 0; i < days.size(); ++i) all += days.at(i).lessons;
     return all;
+}
+
+QString Week::personalSubgroup(const QString &value)
+{
+    if (value.isEmpty()) return QString();
+    QString clean = value.toLower();
+    clean.remove(QLatin1Char(' '));
+    clean.remove(QLatin1Char('_'));
+    clean.remove(QLatin1Char('-'));
+    if (clean == QLatin1String("1") || clean == QLatin1String("left") || clean == QLatin1String("first")
+            || clean == QLatin1String("one") || clean == QString::fromUtf8("первая")
+            || clean == QString::fromUtf8("первый") || clean == QString::fromUtf8("1я")
+            || clean == QString::fromUtf8("1ая") || clean == QString::fromUtf8("1ый")
+            || clean == QString::fromUtf8("1подгруппа") || clean == QString::fromUtf8("1яподгруппа")
+            || clean == QString::fromUtf8("1аяподгруппа") || clean == QString::fromUtf8("подгруппа1")) {
+        return QLatin1String("left");
+    }
+    if (clean == QLatin1String("2") || clean == QLatin1String("right") || clean == QLatin1String("second")
+            || clean == QLatin1String("two") || clean == QString::fromUtf8("вторая")
+            || clean == QString::fromUtf8("второй") || clean == QString::fromUtf8("2я")
+            || clean == QString::fromUtf8("2ая") || clean == QString::fromUtf8("2ой")
+            || clean == QString::fromUtf8("2подгруппа") || clean == QString::fromUtf8("2яподгруппа")
+            || clean == QString::fromUtf8("2аяподгруппа") || clean == QString::fromUtf8("подгруппа2")) {
+        return QLatin1String("right");
+    }
+    return QString();
+}
+
+QString Week::inferSubgroup(const QList<Day> &days)
+{
+    QString found;
+    for (int d = 0; d < days.size(); ++d) {
+        const QList<Lesson> &lessons = days.at(d).lessons;
+        for (int l = 0; l < lessons.size(); ++l) {
+            const QString sub = personalSubgroup(lessons.at(l).subgroup);
+            if (!sub.isEmpty()) {
+                if (found.isEmpty()) {
+                    found = sub;
+                } else if (found != sub) {
+                    return QString();
+                }
+            }
+        }
+    }
+    return found;
+}
+
+bool Week::matchesSubgroup(const Lesson &lesson, const QString &selectedSubgroup, bool teacher)
+{
+    if (teacher || selectedSubgroup.isEmpty() || selectedSubgroup == QLatin1String("all")) {
+        return true;
+    }
+    const QString sub = personalSubgroup(lesson.subgroup);
+    return sub.isEmpty() || sub == selectedSubgroup;
+}
+
+QList<Lesson> Week::visibleLessons(const QList<Lesson> &lessons, const QString &selectedSubgroup, bool teacher)
+{
+    if (teacher || selectedSubgroup.isEmpty() || selectedSubgroup == QLatin1String("all")) {
+        return lessons;
+    }
+    QList<Lesson> out;
+    for (int i = 0; i < lessons.size(); ++i) {
+        if (matchesSubgroup(lessons.at(i), selectedSubgroup, teacher)) {
+            out.append(lessons.at(i));
+        }
+    }
+    return out;
 }
 
 Week Week::fromPayload(const QVariantMap &payload, bool filter)
@@ -398,15 +471,6 @@ Week Week::fromPayload(const QVariantMap &payload, bool filter)
         }
 
         qStableSort(lessons.begin(), lessons.end(), pairLess);
-        if (filter && !teacher && !lessons.isEmpty()) {
-            bool allRemote = true;
-            bool anyContent = false;
-            for (int k = 0; k < lessons.size(); ++k) {
-                allRemote = allRemote && lessons.at(k).remote;
-                anyContent = anyContent || lessons.at(k).hasTaskContent();
-            }
-            if (allRemote && !anyContent) lessons.clear();
-        }
         Day day;
         day.date = date.left(10);
         day.lessons = lessons;

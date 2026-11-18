@@ -60,6 +60,7 @@ struct Lesson
     QString badgeText() const;    ///< "5", "+", "Н" or empty
     bool hasGrade() const { return !badgeText().isEmpty(); }
     bool hasTaskContent() const;
+    bool isIndependent() const;
     QString subgroupText() const; ///< "1 подгруппа" or empty
     QString shortTeacher() const; ///< "Иванова А. П." or empty
     QString hallText() const;     ///< "18А (IT)" or empty
@@ -84,6 +85,11 @@ struct Week
 
     bool isNull() const { return days.isEmpty(); }
     QList<Lesson> allLessons() const;
+
+    static QString personalSubgroup(const QString &value);
+    static QString inferSubgroup(const QList<Day> &days);
+    static bool matchesSubgroup(const Lesson &lesson, const QString &selectedSubgroup, bool teacher);
+    static QList<Lesson> visibleLessons(const QList<Lesson> &lessons, const QString &selectedSubgroup, bool teacher);
 
     /// payload: {weekStart, week: decoded server answer, teacher, extras: {journalId: {homework,
     /// webinar}}, savedAt}. `filter` applies the bot's rule: a student's day of distance pairs

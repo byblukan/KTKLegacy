@@ -364,6 +364,34 @@ NSString *KTKErrorText(NSError *error) {
 
 #pragma mark - sign in / out
 
+static NSString *KTKFindSubgroup(id value) {
+    if ([value isKindOfClass:[NSDictionary class]]) {
+        NSDictionary *map = (NSDictionary *)value;
+        for (NSString *key in map) {
+            if ([key.lowercaseString rangeOfString:@"subgroup"].location != NSNotFound) {
+                NSString *sub = KTKPersonalSubgroup([map[key] description]);
+                if (sub.length) {
+                    return sub;
+                }
+            }
+        }
+        for (id child in map.allValues) {
+            NSString *sub = KTKFindSubgroup(child);
+            if (sub.length) {
+                return sub;
+            }
+        }
+    } else if ([value isKindOfClass:[NSArray class]]) {
+        for (id item in (NSArray *)value) {
+            NSString *sub = KTKFindSubgroup(item);
+            if (sub.length) {
+                return sub;
+            }
+        }
+    }
+    return nil;
+}
+
 - (void)signInWithLogin:(NSString *)login password:(NSString *)password completion:(void (^)(NSError *))completion {
     // The password goes as typed: spaces at its ends may be part of it.
     login = [login stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
@@ -390,6 +418,11 @@ NSString *KTKErrorText(NSError *error) {
                 session.group = [group isKindOfClass:[NSNumber class]] || [group isKindOfClass:[NSString class]] ? [group longLongValue] : 0;
                 session.teacherHash = session.student ? @"" : (KTKString(user[@"hash"]) ?: @"teacher");
                 session.branch = KTKString(user[@"branch"]) ?: @"";
+                NSString *detected = KTKFindSubgroup(user);
+                if (detected.length) {
+                    session.personalSubgroup = detected;
+                    session.subgroup = detected;
+                }
                 if (!session.cookies.count) {
                     session = nil;
                     error = KTKMakeError(KTKErrorBadResponse, nil);
@@ -439,33 +472,68 @@ NSString *KTKErrorText(NSError *error) {
     [[NSFileManager defaultManager] removeItemAtPath:KTKCachesPath(@"ktk-files") error:NULL];
 }
 
+- (void)setSubgroup:(NSString *)subgroup {
+    @synchronized (self) {
+        if (_session) {
+            _session.subgroup = subgroup ?: @"left";
+            [_session save];
+        }
+    }
+}
+
 #pragma mark - weeks
 
+- (NSString *)weekScope:(KTKSession *)session {
+    if (session.student && session.group > 0
+            && ([session.subgroup isEqualToString:@"all"] || (session.personalSubgroup.length && ![session.subgroup isEqualToString:session.personalSubgroup]))) {
+        return [NSString stringWithFormat:@"group-%lld", session.group];
+    }
+    return @"personal";
+}
+
+- (NSString *)weekCachePath:(NSString *)weekStart scope:(NSString *)scope {
+    NSString *name = scope.length ? [NSString stringWithFormat:@"%@-%@.json", weekStart, scope] : [weekStart stringByAppendingString:@".json"];
+    return [KTKCachesPath(@"ktk-weeks") stringByAppendingPathComponent:name];
+}
+
 - (NSString *)weekCachePath:(NSString *)weekStart {
-    return [KTKCachesPath(@"ktk-weeks") stringByAppendingPathComponent:[weekStart stringByAppendingString:@".json"]];
+    return [self weekCachePath:weekStart scope:[self weekScope:self.session]];
 }
 
 - (KTKWeek *)cachedWeek:(NSString *)weekStart {
-    NSData *data = [NSData dataWithContentsOfFile:[self weekCachePath:weekStart]];
+    return [self cachedWeek:weekStart scope:[self weekScope:self.session]];
+}
+
+- (KTKWeek *)cachedWeek:(NSString *)weekStart scope:(NSString *)scope {
+    NSString *path = [self weekCachePath:weekStart scope:scope];
+    if (![[NSFileManager defaultManager] fileExistsAtPath:path]) {
+        path = [self weekCachePath:weekStart scope:nil];
+    }
+    NSData *data = [NSData dataWithContentsOfFile:path];
     NSDictionary *payload = data ? KTKDict([NSJSONSerialization JSONObjectWithData:data options:0 error:NULL]) : nil;
     return payload ? [KTKWeek weekWithPayload:payload filter:YES] : nil;
 }
 
-- (void)saveWeekPayload:(NSDictionary *)payload weekStart:(NSString *)weekStart {
+- (void)saveWeekPayload:(NSDictionary *)payload weekStart:(NSString *)weekStart scope:(NSString *)scope {
     if (![NSJSONSerialization isValidJSONObject:payload]) {
         return;
     }
     NSData *data = [NSJSONSerialization dataWithJSONObject:payload options:0 error:NULL];
     [[NSFileManager defaultManager] createDirectoryAtPath:KTKCachesPath(@"ktk-weeks")
                               withIntermediateDirectories:YES attributes:nil error:NULL];
-    [data writeToFile:[self weekCachePath:weekStart]
+    [data writeToFile:[self weekCachePath:weekStart scope:scope]
               options:NSDataWritingAtomic | NSDataWritingFileProtectionCompleteUntilFirstUserAuthentication
                 error:NULL];
 }
 
 - (NSDictionary *)fetchWeek:(NSString *)weekStart session:(KTKSession *)session error:(NSError **)error {
     BOOL teacher = !session.student;
-    id value = [self call:teacher ? KTKFnTeacher : KTKFnStudent fields:@[@[@"weekStart", weekStart]] jar:nil error:error];
+    BOOL useGroup = session.student && session.group > 0
+        && ([session.subgroup isEqualToString:@"all"] || (session.personalSubgroup.length && ![session.subgroup isEqualToString:session.personalSubgroup]));
+    NSArray *fields = useGroup
+        ? @[@[@"groupId", [NSString stringWithFormat:@"%lld", session.group]], @[@"weekStart", weekStart]]
+        : @[@[@"weekStart", weekStart]];
+    id value = [self call:useGroup ? KTKFnGroup : (teacher ? KTKFnTeacher : KTKFnStudent) fields:fields jar:nil error:error];
     if (!value) {
         return nil;
     }
@@ -543,6 +611,9 @@ NSString *KTKErrorText(NSError *error) {
         completion(nil, KTKMakeError(KTKErrorLoginRequired, nil));
         return;
     }
+    NSString *scope = [self weekScope:session];
+    BOOL useGroup = session.student && session.group > 0
+        && ([session.subgroup isEqualToString:@"all"] || (session.personalSubgroup.length && ![session.subgroup isEqualToString:session.personalSubgroup]));
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         NSError *error = nil;
         NSDictionary *payload = [self fetchWeek:weekStart session:session error:&error];
@@ -550,13 +621,23 @@ NSString *KTKErrorText(NSError *error) {
         if (payload) {
             week = [KTKWeek weekWithPayload:payload filter:YES];
             if (week) {
-                [self saveWeekPayload:payload weekStart:weekStart];
+                [self saveWeekPayload:payload weekStart:weekStart scope:scope];
+                if (session.student && !useGroup && !session.personalSubgroup.length) {
+                    NSString *inferred = KTKInferSubgroup(week.days);
+                    if (inferred.length) {
+                        session.personalSubgroup = inferred;
+                        if (!session.subgroup.length || [session.subgroup isEqualToString:@"left"]) {
+                            session.subgroup = inferred;
+                        }
+                        [session save];
+                    }
+                }
             } else {
                 error = KTKMakeError(KTKErrorBadResponse, nil);
             }
         }
         if (!week && error.code != KTKErrorLoginRequired) {
-            week = [self cachedWeek:weekStart];
+            week = [self cachedWeek:weekStart scope:scope];
             week.offline = YES;
         }
         dispatch_async(dispatch_get_main_queue(), ^{

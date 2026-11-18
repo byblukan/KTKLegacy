@@ -69,6 +69,7 @@ namespace KTKLegacy
             else if (!teacher && Lesson.NotEmpty(l.Teacher)) AddRow("Препод.", l.Teacher);
 
             if (Lesson.NotEmpty(l.PairTypeName)) AddRow("Тип",       l.PairTypeName);
+            else if (l.IsIndependent())          AddRow("Тип",       "Самостоятельная работа");
             if (l.SubgroupText() != null)        AddRow("Подгруппа", l.SubgroupText());
 
             // Grade

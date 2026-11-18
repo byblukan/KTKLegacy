@@ -14,6 +14,7 @@
     <string name="next_week">›</string>
     <string name="current_week">Сейчас</string>
     <string name="refresh">Обновить</string>
+    <string name="subgroup">Подгруппа</string>
     <string name="sign_out">Выйти</string>
     <string name="cancel">Отмена</string>
 </resources>

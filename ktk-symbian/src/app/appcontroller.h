@@ -64,6 +64,8 @@ class AppController : public QObject
     Q_PROPERTY(QVariantList rows READ rows NOTIFY weekChanged)
     Q_PROPERTY(QString banner READ banner NOTIFY weekChanged)
     Q_PROPERTY(int downloadingFile READ downloadingFile NOTIFY downloadChanged)
+    Q_PROPERTY(int subgroupIndex READ subgroupIndex WRITE setSubgroupIndex NOTIFY subgroupChanged)
+    Q_PROPERTY(bool isStudent READ isStudent CONSTANT)
     Q_PROPERTY(QString version READ version CONSTANT)
 
 public:
@@ -83,6 +85,9 @@ public:
     QVariantList rows() const { return m_rows; }
     QString banner() const { return m_banner; }
     int downloadingFile() const { return m_downloadingFile; }
+    int subgroupIndex() const;
+    Q_INVOKABLE void setSubgroupIndex(int index);
+    bool isStudent() const;
     QString version() const;
 
     Q_INVOKABLE void signIn(const QString &login, const QString &password);
@@ -109,6 +114,7 @@ signals:
     void sessionChanged();
     void signingInChanged();
     void weekChanged();
+    void subgroupChanged();
     void downloadChanged();
     void signInFailed(const QString &message);
     /// The site ended the session; the app has signed out locally.

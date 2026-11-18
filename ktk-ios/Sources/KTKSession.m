@@ -27,6 +27,8 @@ static NSString *KTKFallbackPath(void) {
         @"group": @(self.group),
         @"teacherHash": self.teacherHash ?: @"",
         @"branch": self.branch ?: @"",
+        @"personalSubgroup": self.personalSubgroup ?: @"",
+        @"subgroup": self.subgroup ?: @"",
     };
 }
 
@@ -44,6 +46,11 @@ static NSString *KTKFallbackPath(void) {
     session.group = [d[@"group"] isKindOfClass:[NSNumber class]] ? [d[@"group"] longLongValue] : 0;
     session.teacherHash = [d[@"teacherHash"] isKindOfClass:[NSString class]] ? d[@"teacherHash"] : @"";
     session.branch = [d[@"branch"] isKindOfClass:[NSString class]] ? d[@"branch"] : @"";
+    session.personalSubgroup = [d[@"personalSubgroup"] isKindOfClass:[NSString class]] ? d[@"personalSubgroup"] : @"";
+    session.subgroup = [d[@"subgroup"] isKindOfClass:[NSString class]] ? d[@"subgroup"] : @"";
+    if (!session.subgroup.length) {
+        session.subgroup = session.personalSubgroup.length ? session.personalSubgroup : @"left";
+    }
     return session;
 }
 

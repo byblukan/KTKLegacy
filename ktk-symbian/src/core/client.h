@@ -30,6 +30,8 @@ struct Session
     qint64 group;
     QString teacherHash;
     QString branch;
+    QString personalSubgroup;
+    QString subgroup;
 
     bool isNull() const { return cookies.isEmpty(); }
     QVariantMap toVariant() const;
@@ -55,6 +57,7 @@ public:
 
     /// Throws KtkError.
     Session signIn(const QString &login, const QString &password);
+    void setSubgroup(const QString &subgroup);
     /// Forgets the session, every saved week and every downloaded file.
     void signOutLocally();
     /// Ends `old` on the site (best effort; the local session should be gone already).
@@ -66,6 +69,8 @@ public:
     Week loadWeek(const QString &weekStart, KtkError *error);
     /// The saved copy of a week, or a null week. Reads a small file: fine on the UI thread.
     Week cachedWeek(const QString &weekStart) const;
+    Week cachedWeek(const QString &weekStart, const QString &scope) const;
+    QString weekScope(const Session &session) const;
 
     /// Downloads (or finds already downloaded) a task file; returns its path. Throws KtkError.
     QString downloadFile(const TaskFile &file);
@@ -87,7 +92,7 @@ private:
     QVariant quietCall(Http &http, Fn fn, const Seroval::Fields &fields);
     QVariantMap fetchWeek(Http &http, const QString &weekStart, const Session &session);
     QVariantMap extras(Http &http, const QVariantMap &payload, const QString &weekStart);
-    void saveWeekPayload(const QVariantMap &payload, const QString &weekStart);
+    void saveWeekPayload(const QVariantMap &payload, const QString &weekStart, const QString &scope = QString());
     void saveSessionLocked();
     void forgetCaches();
 

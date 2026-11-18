@@ -20,6 +20,8 @@ final class Session {
     long group;
     String teacherHash = "";
     String branch = "";
+    String personalSubgroup = "";
+    String subgroup = "";
 
     static Session load(Context context) {
         String json = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, null);
@@ -44,6 +46,11 @@ final class Session {
             session.group = Json.number(d.get("group"), 0);
             session.teacherHash = orEmpty(Json.string(d.get("teacherHash")));
             session.branch = orEmpty(Json.string(d.get("branch")));
+            session.personalSubgroup = orEmpty(Json.string(d.get("personalSubgroup")));
+            session.subgroup = orEmpty(Json.string(d.get("subgroup")));
+            if (session.subgroup.isEmpty()) {
+                session.subgroup = session.personalSubgroup.isEmpty() ? "left" : session.personalSubgroup;
+            }
             return session;
         } catch (Exception e) {
             return null;
@@ -59,6 +66,8 @@ final class Session {
         d.put("group", group);
         d.put("teacherHash", teacherHash);
         d.put("branch", branch);
+        d.put("personalSubgroup", personalSubgroup);
+        d.put("subgroup", subgroup);
         try {
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                 .putString(KEY, Json.toJson(d).toString()).commit();

@@ -78,13 +78,17 @@ final class Lesson {
         return hasHomework || notEmpty(task) || notEmpty(webinar) || !files.isEmpty();
     }
 
+    boolean isIndependent() {
+        return pairTypeId == 9 || (pairTypeName != null && pairTypeName.toLowerCase().contains("самосто"));
+    }
+
     /** "1 подгруппа" or null. */
     String subgroupText() {
-        String s = subgroup != null ? subgroup.toLowerCase() : "";
-        if (s.equals("left") || s.equals("1")) {
+        String s = Week.personalSubgroup(subgroup);
+        if ("left".equals(s)) {
             return "1 подгруппа";
         }
-        if (s.equals("right") || s.equals("2")) {
+        if ("right".equals(s)) {
             return "2 подгруппа";
         }
         return null;

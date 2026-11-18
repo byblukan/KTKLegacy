@@ -36,6 +36,9 @@ static UIColor *KTKBadgeColor(NSString *badge) {
     } else if (lesson.hallText) {
         [first addObject:[@"каб. " stringByAppendingString:lesson.hallText]];
     }
+    if (lesson.isIndependent) {
+        [first addObject:@"СРС"];
+    }
     if (lesson.subgroupText) {
         [first addObject:lesson.subgroupText];
     }
@@ -122,7 +125,7 @@ static UIColor *KTKBadgeColor(NSString *badge) {
 
 #pragma mark - week screen
 
-@interface KTKWeekViewController () <UIActionSheetDelegate>
+@interface KTKWeekViewController () <UIActionSheetDelegate, UIAlertViewDelegate>
 @end
 
 @implementation KTKWeekViewController {
@@ -158,8 +161,8 @@ static UIColor *KTKBadgeColor(NSString *badge) {
     _spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleWhite];
     _spinner.hidesWhenStopped = YES;
     self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithCustomView:_spinner];
-    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"Выйти"
-        style:UIBarButtonItemStyleBordered target:self action:@selector(confirmSignOut)];
+    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"Меню"
+        style:UIBarButtonItemStyleBordered target:self action:@selector(showMenu)];
 
     _mode = [[UISegmentedControl alloc] initWithItems:@[@"Пары", @"Оценки"]];
     _mode.segmentedControlStyle = UISegmentedControlStyleBar;
@@ -270,8 +273,11 @@ static UIColor *KTKBadgeColor(NSString *badge) {
 
 - (void)rebuild {
     NSMutableArray *sections = [NSMutableArray array];
+    KTKSession *session = [KTKClient shared].session;
+    NSString *subgroup = session.subgroup;
+    BOOL teacher = session ? !session.student : NO;
     for (KTKDay *day in _week.days) {
-        NSArray *lessons = day.lessons;
+        NSArray *lessons = KTKVisibleLessons(day.lessons, subgroup, teacher);
         if (_gradesMode) {
             lessons = [lessons filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(KTKLesson *lesson, NSDictionary *bindings) {
                 return lesson.hasGrade;
@@ -395,18 +401,62 @@ static UIColor *KTKBadgeColor(NSString *badge) {
     [self.navigationController pushViewController:controller animated:YES];
 }
 
-#pragma mark - sign out
+#pragma mark - menu & sign out
+
+- (void)showMenu {
+    KTKSession *session = [KTKClient shared].session;
+    if (!session.student) {
+        [self confirmSignOut];
+        return;
+    }
+    NSString *subgroup = session.subgroup ?: @"left";
+    NSString *sub1 = [subgroup isEqualToString:@"left"] ? @"✓ 1 подгруппа" : @"1 подгруппа";
+    NSString *sub2 = [subgroup isEqualToString:@"right"] ? @"✓ 2 подгруппа" : @"2 подгруппа";
+    NSString *subAll = [subgroup isEqualToString:@"all"] ? @"✓ Обе подгруппы" : @"Обе подгруппы";
+    UIActionSheet *sheet = [[UIActionSheet alloc]
+        initWithTitle:@"Подгруппа"
+             delegate:self
+    cancelButtonTitle:@"Отмена"
+destructiveButtonTitle:@"Выйти из аккаунта"
+    otherButtonTitles:sub1, sub2, subAll, nil];
+    [sheet showFromToolbar:self.navigationController.toolbar];
+}
+
+- (void)selectSubgroup:(NSString *)chosen {
+    KTKSession *session = [KTKClient shared].session;
+    if (![chosen isEqualToString:session.subgroup]) {
+        [[KTKClient shared] setSubgroup:chosen];
+        [self rebuild];
+        [self reload];
+    }
+}
 
 - (void)confirmSignOut {
     NSString *login = [KTKClient shared].session.login;
-    UIActionSheet *sheet = [[UIActionSheet alloc]
-        initWithTitle:login.length ? [NSString stringWithFormat:@"Выйти из аккаунта %@?", login] : @"Выйти из аккаунта?"
-             delegate:self cancelButtonTitle:@"Отмена" destructiveButtonTitle:@"Выйти" otherButtonTitles:nil];
-    [sheet showFromToolbar:self.navigationController.toolbar];
+    UIAlertView *alert = [[UIAlertView alloc]
+        initWithTitle:@"Выход"
+              message:login.length ? [NSString stringWithFormat:@"Выйти из аккаунта %@?", login] : @"Выйти из аккаунта?"
+             delegate:self
+    cancelButtonTitle:@"Отмена"
+    otherButtonTitles:@"Выйти", nil];
+    alert.tag = 200;
+    [alert show];
 }
 
 - (void)actionSheet:(UIActionSheet *)actionSheet clickedButtonAtIndex:(NSInteger)buttonIndex {
     if (buttonIndex == actionSheet.destructiveButtonIndex) {
+        [self confirmSignOut];
+    } else if (buttonIndex == actionSheet.firstOtherButtonIndex) {
+        [self selectSubgroup:@"left"];
+    } else if (buttonIndex == actionSheet.firstOtherButtonIndex + 1) {
+        [self selectSubgroup:@"right"];
+    } else if (buttonIndex == actionSheet.firstOtherButtonIndex + 2) {
+        [self selectSubgroup:@"all"];
+    }
+}
+
+- (void)alertView:(UIAlertView *)alertView clickedButtonAtIndex:(NSInteger)buttonIndex {
+    if (alertView.tag == 200 && buttonIndex != alertView.cancelButtonIndex) {
         [[KTKClient shared] signOut];
     }
 }

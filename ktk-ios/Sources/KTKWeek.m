@@ -21,6 +21,71 @@ static NSString *KTKText(id value) {
     return text.length ? text : nil;
 }
 
+NSString *KTKPersonalSubgroup(NSString *value) {
+    if (!value.length) {
+        return nil;
+    }
+    NSMutableString *clean = [value.lowercaseString mutableCopy];
+    [clean replaceOccurrencesOfString:@" " withString:@"" options:0 range:NSMakeRange(0, clean.length)];
+    [clean replaceOccurrencesOfString:@"_" withString:@"" options:0 range:NSMakeRange(0, clean.length)];
+    [clean replaceOccurrencesOfString:@"-" withString:@"" options:0 range:NSMakeRange(0, clean.length)];
+    if ([clean isEqualToString:@"1"] || [clean isEqualToString:@"left"] || [clean isEqualToString:@"first"]
+            || [clean isEqualToString:@"one"] || [clean isEqualToString:@"первая"]
+            || [clean isEqualToString:@"первый"] || [clean isEqualToString:@"1я"]
+            || [clean isEqualToString:@"1ая"] || [clean isEqualToString:@"1ый"]
+            || [clean isEqualToString:@"1подгруппа"] || [clean isEqualToString:@"1яподгруппа"]
+            || [clean isEqualToString:@"1аяподгруппа"] || [clean isEqualToString:@"подгруппа1"]) {
+        return @"left";
+    }
+    if ([clean isEqualToString:@"2"] || [clean isEqualToString:@"right"] || [clean isEqualToString:@"second"]
+            || [clean isEqualToString:@"two"] || [clean isEqualToString:@"вторая"]
+            || [clean isEqualToString:@"второй"] || [clean isEqualToString:@"2я"]
+            || [clean isEqualToString:@"2ая"] || [clean isEqualToString:@"2ой"]
+            || [clean isEqualToString:@"2подгруппа"] || [clean isEqualToString:@"2яподгруппа"]
+            || [clean isEqualToString:@"2аяподгруппа"] || [clean isEqualToString:@"подгруппа2"]) {
+        return @"right";
+    }
+    return nil;
+}
+
+NSString *KTKInferSubgroup(NSArray *days) {
+    NSString *found = nil;
+    for (KTKDay *day in days) {
+        for (KTKLesson *lesson in day.lessons) {
+            NSString *sub = KTKPersonalSubgroup(lesson.subgroup);
+            if (sub.length) {
+                if (!found) {
+                    found = sub;
+                } else if (![found isEqualToString:sub]) {
+                    return nil;
+                }
+            }
+        }
+    }
+    return found;
+}
+
+BOOL KTKMatchesSubgroup(KTKLesson *lesson, NSString *selectedSubgroup, BOOL teacher) {
+    if (teacher || !selectedSubgroup.length || [selectedSubgroup isEqualToString:@"all"]) {
+        return YES;
+    }
+    NSString *sub = KTKPersonalSubgroup(lesson.subgroup);
+    return !sub.length || [sub isEqualToString:selectedSubgroup];
+}
+
+NSArray *KTKVisibleLessons(NSArray *lessons, NSString *selectedSubgroup, BOOL teacher) {
+    if (teacher || !selectedSubgroup.length || [selectedSubgroup isEqualToString:@"all"]) {
+        return lessons;
+    }
+    NSMutableArray *out = [NSMutableArray array];
+    for (KTKLesson *lesson in lessons) {
+        if (KTKMatchesSubgroup(lesson, selectedSubgroup, teacher)) {
+            [out addObject:lesson];
+        }
+    }
+    return out;
+}
+
 static long long KTKNumber(id value, long long fallback) {
     return [value isKindOfClass:[NSNumber class]] ? [value longLongValue] : fallback;
 }
@@ -115,12 +180,16 @@ static NSString *KTKMarkSymbol(NSInteger mark) {
     return self.hasHomework || self.task.length || self.webinar.length || self.files.count;
 }
 
+- (BOOL)isIndependent {
+    return self.pairTypeId == 9 || ([self.pairTypeName.lowercaseString rangeOfString:@"самосто"].location != NSNotFound);
+}
+
 - (NSString *)subgroupText {
-    NSString *s = self.subgroup.lowercaseString;
-    if ([s isEqualToString:@"left"] || [s isEqualToString:@"1"]) {
+    NSString *s = KTKPersonalSubgroup(self.subgroup);
+    if ([s isEqualToString:@"left"]) {
         return @"1 подгруппа";
     }
-    if ([s isEqualToString:@"right"] || [s isEqualToString:@"2"]) {
+    if ([s isEqualToString:@"right"]) {
         return @"2 подгруппа";
     }
     return nil;
@@ -318,16 +387,6 @@ static NSString *KTKMarkSymbol(NSInteger mark) {
         NSArray *sorted = [lessons sortedArrayWithOptions:NSSortStable usingComparator:^NSComparisonResult(KTKLesson *a, KTKLesson *b) {
             return a.pair < b.pair ? NSOrderedAscending : a.pair > b.pair ? NSOrderedDescending : NSOrderedSame;
         }];
-        if (filter && !teacher && sorted.count) {
-            BOOL allRemote = YES, anyContent = NO;
-            for (KTKLesson *lesson in sorted) {
-                allRemote = allRemote && lesson.remote;
-                anyContent = anyContent || lesson.hasTaskContent;
-            }
-            if (allRemote && !anyContent) {
-                sorted = @[];
-            }
-        }
         KTKDay *day = [KTKDay new];
         day.date = [date substringToIndex:MIN(date.length, (NSUInteger)10)];
         day.lessons = sorted;

@@ -17,9 +17,22 @@ Page {
         id: menu
         MenuLayout {
             MenuItem { text: "Текущая неделя"; onClicked: app.showCurrentWeek() }
+            MenuItem { text: "Подгруппа"; visible: app.isStudent; onClicked: subgroupDialog.open() }
             MenuItem { text: "Обновить"; onClicked: app.reload() }
             MenuItem { text: "Выйти"; onClicked: signOutDialog.open() }
         }
+    }
+
+    SelectionDialog {
+        id: subgroupDialog
+        titleText: "Подгруппа"
+        selectedIndex: app.subgroupIndex
+        model: ListModel {
+            ListElement { name: "1 подгруппа" }
+            ListElement { name: "2 подгруппа" }
+            ListElement { name: "Обе подгруппы" }
+        }
+        onAccepted: app.setSubgroupIndex(selectedIndex)
     }
 
     QueryDialog {

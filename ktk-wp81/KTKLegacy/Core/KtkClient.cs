@@ -455,11 +455,60 @@ namespace KTKLegacy
             string hash         = Json.Str(user.ContainsKey("hash")   ? user["hash"]   : null);
             session.TeacherHash = session.Student ? "" : (hash ?? "teacher");
             session.Branch      = Json.Str(user.ContainsKey("branch") ? user["branch"] : null) ?? "";
+            string detectedSubgroup = FindSubgroup(user);
+            if (!string.IsNullOrEmpty(detectedSubgroup))
+            {
+                session.PersonalSubgroup = detectedSubgroup;
+                session.Subgroup         = detectedSubgroup;
+            }
 
             ForgetCaches();
             session.Save();
             lock (_sessionLock) { _session = session; _jar = new Dictionary<string, string>(session.Cookies); }
             return session;
+        }
+
+        private static string FindSubgroup(object value)
+        {
+            var map = value as Dictionary<string, object>;
+            if (map != null)
+            {
+                foreach (var kv in map)
+                {
+                    if (kv.Key.ToLowerInvariant().Contains("subgroup"))
+                    {
+                        string sub = Week.PersonalSubgroup(kv.Value != null ? kv.Value.ToString() : null);
+                        if (!string.IsNullOrEmpty(sub)) return sub;
+                    }
+                }
+                foreach (var child in map.Values)
+                {
+                    string sub = FindSubgroup(child);
+                    if (!string.IsNullOrEmpty(sub)) return sub;
+                }
+            }
+            var list = value as List<object>;
+            if (list != null)
+            {
+                foreach (var item in list)
+                {
+                    string sub = FindSubgroup(item);
+                    if (!string.IsNullOrEmpty(sub)) return sub;
+                }
+            }
+            return null;
+        }
+
+        public void SetSubgroup(string subgroup)
+        {
+            lock (_sessionLock)
+            {
+                if (_session != null)
+                {
+                    _session.Subgroup = subgroup ?? "left";
+                    _session.Save();
+                }
+            }
         }
 
         public void SignOutLocally()
@@ -510,19 +559,38 @@ namespace KTKLegacy
 
         // ---------------------------------------------------------------- weeks
 
-        private string WeekCachePath(string weekStart)
+        public string WeekScope(KtkSession session)
         {
-            return "ktk-weeks/" + weekStart + ".json";
+            if (session != null && session.Student && session.Group > 0
+                    && (session.Subgroup == "all" || (!string.IsNullOrEmpty(session.PersonalSubgroup) && session.Subgroup != session.PersonalSubgroup)))
+            {
+                return "group-" + session.Group;
+            }
+            return "personal";
+        }
+
+        private string WeekCachePath(string weekStart, string scope)
+        {
+            string name = !string.IsNullOrEmpty(scope) ? weekStart + "-" + scope : weekStart;
+            return "ktk-weeks/" + name + ".json";
         }
 
         public Week CachedWeek(string weekStart)
+        {
+            KtkSession s;
+            lock (_sessionLock) s = _session;
+            return CachedWeek(weekStart, WeekScope(s));
+        }
+
+        public Week CachedWeek(string weekStart, string scope)
         {
             if (weekStart == null || !WeekStartRx.IsMatch(weekStart)) return null;
             try
             {
                 using (var store = IsolatedStorageFile.GetUserStoreForApplication())
                 {
-                    string path = WeekCachePath(weekStart);
+                    string path = WeekCachePath(weekStart, scope);
+                    if (!store.FileExists(path)) path = WeekCachePath(weekStart, null);
                     if (!store.FileExists(path)) return null;
                     string json;
                     using (var stream = store.OpenFile(path, FileMode.Open, FileAccess.Read))
@@ -535,14 +603,14 @@ namespace KTKLegacy
             catch { return null; }
         }
 
-        private void SaveWeekPayload(Dictionary<string, object> payload, string weekStart)
+        private void SaveWeekPayload(Dictionary<string, object> payload, string weekStart, string scope)
         {
             try
             {
                 using (var store = IsolatedStorageFile.GetUserStoreForApplication())
                 {
                     if (!store.DirectoryExists("ktk-weeks")) store.CreateDirectory("ktk-weeks");
-                    string path  = WeekCachePath(weekStart);
+                    string path  = WeekCachePath(weekStart, scope);
                     string part  = path + ".part";
                     using (var stream = store.OpenFile(part, FileMode.Create, FileAccess.Write))
                     using (var writer = new StreamWriter(stream))
@@ -557,8 +625,12 @@ namespace KTKLegacy
         private async Task<Dictionary<string, object>> FetchWeek(string weekStart, KtkSession session)
         {
             bool teacher = !session.Student;
-            var fields = new[]{ new KeyValuePair<string, object>("weekStart", weekStart) };
-            var value = await Call(teacher ? Fn.Teacher : Fn.Student, fields);
+            bool useGroup = session.Student && session.Group > 0
+                && (session.Subgroup == "all" || (!string.IsNullOrEmpty(session.PersonalSubgroup) && session.Subgroup != session.PersonalSubgroup));
+            var fields = useGroup
+                ? new[]{ new KeyValuePair<string, object>("groupId", session.Group.ToString()), new KeyValuePair<string, object>("weekStart", weekStart) }
+                : new[]{ new KeyValuePair<string, object>("weekStart", weekStart) };
+            var value = await Call(useGroup ? Fn.Group : (teacher ? Fn.Teacher : Fn.Student), fields);
             var err = ServerError(value);
             if (err != null) throw err;
             var week = Json.Map(value);
@@ -633,13 +705,31 @@ namespace KTKLegacy
             if (session == null || !WeekStartRx.IsMatch(weekStart ?? ""))
                 return new WeekResult(null, new KtkException(KtkErrorCode.LoginRequired, null));
 
+            string scope = WeekScope(session);
+            bool useGroup = session.Student && session.Group > 0
+                && (session.Subgroup == "all" || (!string.IsNullOrEmpty(session.PersonalSubgroup) && session.Subgroup != session.PersonalSubgroup));
+
             KtkException error = null;
             Week week = null;
             try
             {
                 var payload = await FetchWeek(weekStart, session);
                 week = Week.FromPayload(payload, true);
-                if (week != null) SaveWeekPayload(payload, weekStart);
+                if (week != null)
+                {
+                    SaveWeekPayload(payload, weekStart, scope);
+                    if (session.Student && !useGroup && string.IsNullOrEmpty(session.PersonalSubgroup))
+                    {
+                        string inferred = Week.InferSubgroup(week.Days);
+                        if (!string.IsNullOrEmpty(inferred))
+                        {
+                            session.PersonalSubgroup = inferred;
+                            if (string.IsNullOrEmpty(session.Subgroup) || session.Subgroup == "left")
+                                session.Subgroup = inferred;
+                            session.Save();
+                        }
+                    }
+                }
                 else error = new KtkException(KtkErrorCode.BadResponse, null);
             }
             catch (KtkException e) { error = e; }
@@ -647,7 +737,7 @@ namespace KTKLegacy
 
             if (week == null && (error == null || error.Code != KtkErrorCode.LoginRequired))
             {
-                week = CachedWeek(weekStart);
+                week = CachedWeek(weekStart, scope);
                 if (week != null) week.Offline = true;
             }
             if (error != null && error.Code == KtkErrorCode.LoginRequired)

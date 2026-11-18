@@ -5,6 +5,10 @@
         android:showAsAction="ifRoom"
         android:title="@string/refresh" />
     <item
+        android:id="@+id/subgroup"
+        android:showAsAction="never"
+        android:title="@string/subgroup" />
+    <item
         android:id="@+id/sign_out"
         android:showAsAction="never"
         android:title="@string/sign_out" />

@@ -22,6 +22,9 @@ NSString *KTKErrorText(NSError *error);
 /// KTKErrorLoginRequired signs out locally.
 - (void)loadWeek:(NSString *)weekStart completion:(void (^)(KTKWeek *week, NSError *error))completion;
 - (KTKWeek *)cachedWeek:(NSString *)weekStart;
+- (KTKWeek *)cachedWeek:(NSString *)weekStart scope:(NSString *)scope;
+- (NSString *)weekScope:(KTKSession *)session;
+- (void)setSubgroup:(NSString *)subgroup;
 
 - (void)downloadFile:(KTKFile *)file completion:(void (^)(NSString *path, NSError *error))completion;
 

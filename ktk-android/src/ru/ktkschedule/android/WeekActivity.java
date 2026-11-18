@@ -134,6 +134,13 @@ public final class WeekActivity extends Activity {
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         getMenuInflater().inflate(R.menu.week, menu);
+        Session s = Client.get(this).session();
+        if (s != null && !s.student) {
+            MenuItem item = menu.findItem(R.id.subgroup);
+            if (item != null) {
+                item.setVisible(false);
+            }
+        }
         return true;
     }
 
@@ -145,11 +152,47 @@ public final class WeekActivity extends Activity {
             }
             return true;
         }
+        if (item.getItemId() == R.id.subgroup) {
+            selectSubgroup();
+            return true;
+        }
         if (item.getItemId() == R.id.sign_out) {
             confirmSignOut();
             return true;
         }
         return super.onOptionsItemSelected(item);
+    }
+
+    private void selectSubgroup() {
+        final Session session = Client.get(this).session();
+        if (session == null) {
+            return;
+        }
+        final String[] items = {"1 подгруппа", "2 подгруппа", "Обе подгруппы"};
+        final String[] values = {"left", "right", "all"};
+        int selected = 0;
+        if ("right".equals(session.subgroup)) {
+            selected = 1;
+        } else if ("all".equals(session.subgroup)) {
+            selected = 2;
+        }
+        new AlertDialog.Builder(this)
+            .setTitle(R.string.subgroup)
+            .setSingleChoiceItems(items, selected, new DialogInterface.OnClickListener() {
+                @Override
+                public void onClick(DialogInterface dialog, int which) {
+                    dialog.dismiss();
+                    String chosen = values[which];
+                    if (!chosen.equals(session.subgroup)) {
+                        session.subgroup = chosen;
+                        session.save(WeekActivity.this);
+                        rebuild();
+                        reload();
+                    }
+                }
+            })
+            .setNegativeButton(R.string.cancel, null)
+            .show();
     }
 
     // ---------------------------------------------------------------- navigation
@@ -260,10 +303,13 @@ public final class WeekActivity extends Activity {
         List<Row> rows = new ArrayList<Row>();
         boolean anyDay = false;
         if (week != null) {
+            Session s = Client.get(this).session();
+            String currentSubgroup = s != null ? s.subgroup : "left";
+            boolean teacher = s != null && !s.student;
             for (Week.Day day : week.days) {
                 List<Lesson> lessons = new ArrayList<Lesson>();
                 for (Lesson lesson : day.lessons) {
-                    if (!gradesMode || lesson.hasGrade()) {
+                    if (Week.matchesSubgroup(lesson, currentSubgroup, teacher) && (!gradesMode || lesson.hasGrade())) {
                         lessons.add(lesson);
                     }
                 }
@@ -427,6 +473,9 @@ public final class WeekActivity extends Activity {
             first.add("дистанционно");
         } else if (lesson.hallText() != null) {
             first.add("каб. " + lesson.hallText());
+        }
+        if (lesson.isIndependent()) {
+            first.add("СРС");
         }
         if (lesson.subgroupText() != null) {
             first.add(lesson.subgroupText());

@@ -118,12 +118,17 @@ namespace KTKLegacy
             return HasHomework || NotEmpty(Task) || NotEmpty(Webinar) || Files.Count > 0;
         }
 
+        public bool IsIndependent()
+        {
+            return PairTypeId == 9 || (PairTypeName != null && PairTypeName.ToLowerInvariant().Contains("самосто"));
+        }
+
         /// <summary>"1 подгруппа" or null.</summary>
         public string SubgroupText()
         {
-            string s = Subgroup != null ? Subgroup.ToLowerInvariant() : "";
-            if (s == "left"  || s == "1") return "1 подгруппа";
-            if (s == "right" || s == "2") return "2 подгруппа";
+            string s = Week.PersonalSubgroup(Subgroup);
+            if (s == "left")  return "1 подгруппа";
+            if (s == "right") return "2 подгруппа";
             return null;
         }
 
@@ -177,6 +182,72 @@ namespace KTKLegacy
             var all = new List<Lesson>();
             foreach (var d in Days) all.AddRange(d.Lessons);
             return all;
+        }
+
+        public static string PersonalSubgroup(string value)
+        {
+            if (string.IsNullOrEmpty(value)) return null;
+            string clean = value.ToLowerInvariant().Replace(" ", "").Replace("_", "").Replace("-", "");
+            if (clean == "1" || clean == "left" || clean == "first" || clean == "one"
+                    || clean == "первая" || clean == "первый" || clean == "1я" || clean == "1ая"
+                    || clean == "1ый" || clean == "1подгруппа" || clean == "1яподгруппа"
+                    || clean == "1аяподгруппа" || clean == "подгруппа1")
+            {
+                return "left";
+            }
+            if (clean == "2" || clean == "right" || clean == "second" || clean == "two"
+                    || clean == "вторая" || clean == "второй" || clean == "2я" || clean == "2ая"
+                    || clean == "2ой" || clean == "2подгруппа" || clean == "2яподгруппа"
+                    || clean == "2аяподгруппа" || clean == "подгруппа2")
+            {
+                return "right";
+            }
+            return null;
+        }
+
+        public static string InferSubgroup(List<Day> days)
+        {
+            string found = null;
+            foreach (var day in days)
+            {
+                foreach (var lesson in day.Lessons)
+                {
+                    string sub = PersonalSubgroup(lesson.Subgroup);
+                    if (!string.IsNullOrEmpty(sub))
+                    {
+                        if (found == null)
+                        {
+                            found = sub;
+                        }
+                        else if (found != sub)
+                        {
+                            return null;
+                        }
+                    }
+                }
+            }
+            return found;
+        }
+
+        public static bool MatchesSubgroup(Lesson lesson, string selectedSubgroup, bool teacher)
+        {
+            if (teacher || string.IsNullOrEmpty(selectedSubgroup) || selectedSubgroup == "all")
+                return true;
+            string sub = PersonalSubgroup(lesson.Subgroup);
+            return string.IsNullOrEmpty(sub) || sub == selectedSubgroup;
+        }
+
+        public static List<Lesson> VisibleLessons(List<Lesson> lessons, string selectedSubgroup, bool teacher)
+        {
+            if (teacher || string.IsNullOrEmpty(selectedSubgroup) || selectedSubgroup == "all")
+                return lessons;
+            var outList = new List<Lesson>();
+            foreach (var l in lessons)
+            {
+                if (MatchesSubgroup(l, selectedSubgroup, teacher))
+                    outList.Add(l);
+            }
+            return outList;
         }
 
         /// <summary>payload: {weekStart, week: decoded server answer, teacher,
@@ -310,17 +381,6 @@ namespace KTKLegacy
                 }
 
                 lessons.Sort((a, b) => a.Pair.CompareTo(b.Pair));
-
-                if (filter && !teacher && lessons.Count > 0)
-                {
-                    bool allRemote = true, anyContent = false;
-                    foreach (var l in lessons)
-                    {
-                        allRemote &= l.Remote;
-                        anyContent |= l.HasTaskContent();
-                    }
-                    if (allRemote && !anyContent) lessons.Clear();
-                }
 
                 var day = new Day
                 {

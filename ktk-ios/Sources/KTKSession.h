@@ -11,6 +11,8 @@
 @property (nonatomic) long long group;
 @property (nonatomic, copy) NSString *teacherHash;
 @property (nonatomic, copy) NSString *branch;
+@property (nonatomic, copy) NSString *personalSubgroup;
+@property (nonatomic, copy) NSString *subgroup;
 
 + (instancetype)load;
 - (BOOL)save;
