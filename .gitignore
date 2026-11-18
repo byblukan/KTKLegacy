@@ -4,6 +4,14 @@
 *.sisx
 *.deb
 *.ipa
+*.xap
+
+# Visual Studio / Windows Phone build artifacts
+[Bb]in/
+[Oo]bj/
+*.user
+*.suo
+.vs/
 
 # SDK installers and archives
 *.7z

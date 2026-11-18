@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Package xmlns="http://schemas.microsoft.com/appx/2010/manifest" xmlns:m2="http://schemas.microsoft.com/appx/2013/manifest" xmlns:m3="http://schemas.microsoft.com/appx/2014/manifest" xmlns:mp="http://schemas.microsoft.com/appx/2014/phone/manifest">
+  <Identity Name="KTKLegacy" Publisher="CN=KTKLegacy" Version="1.0.1.0" />
+  <mp:PhoneIdentity PhoneProductId="f2641bac-e3ed-4430-aa5a-a6cde24335f6" PhonePublisherId="87a4c7eb-7877-40e6-ae71-d0aad5002e9f" />
+  <Properties>
+    <DisplayName>KTKLegacy</DisplayName>
+    <PublisherDisplayName>KTKLegacy</PublisherDisplayName>
+    <Logo>Assets\ApplicationIcon.png</Logo>
+  </Properties>
+  <Prerequisites>
+    <OSMinVersion>6.3.1</OSMinVersion>
+    <OSMaxVersionTested>6.3.1</OSMaxVersionTested>
+  </Prerequisites>
+  <Resources>
+    <Resource Language="x-generate" />
+  </Resources>
+  <Applications>
+    <Application Id="App" Executable="AGHost.exe" EntryPoint="LoginPage.xaml">
+      <m3:VisualElements DisplayName="KTKLegacy" Description="Неофициальный клиент расписания КТК" Square150x150Logo="Assets\Tiles\FlipCycleTileMedium.png" Square44x44Logo="Assets\ApplicationIcon.png" ForegroundText="light" BackgroundColor="transparent">
+        <m3:DefaultTile Square71x71Logo="Assets\Tiles\FlipCycleTileSmall.png" />
+        <m3:SplashScreen Image="Assets\SplashScreenImage.png" />
+      </m3:VisualElements>
+      <Extensions>
+        <Extension Category="windows.backgroundTasks" EntryPoint="AgHost.BackgroundTask">
+          <BackgroundTasks>
+            <Task Type="systemEvent" />
+          </BackgroundTasks>
+        </Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+  <Capabilities />
+  <Extensions>
+    <Extension Category="windows.activatableClass.inProcessServer">
+      <InProcessServer>
+        <Path>AgHostSvcs.dll</Path>
+        <ActivatableClass ActivatableClassId="AgHost.BackgroundTask" ThreadingModel="both" />
+      </InProcessServer>
+    </Extension>
+  </Extensions>
+</Package>

@@ -4,17 +4,18 @@
 для старых телефонов, которые современный сайт уже не открывают.
 
 Расписание на неделю, оценки, задания, вебинары и файлы заданий — на iPhone с iOS 6,
-Android 4.1 и Nokia на Symbian.
+Android 4.1, Nokia на Symbian и Windows Phone 8.1.
 
 | | Платформа | Язык | Минимальная версия | Папка |
 |---|---|---|---|---|
 | <img src="docs/screenshots/ios/week.png" width="160"> | **iOS** | Objective-C | iOS 6, armv7 (iPhone 3GS и новее), джейлбрейк | [`ktk-ios`](ktk-ios) |
 | <img src="docs/screenshots/android/week.png" width="160"> | **Android** | Java | Android 4.1 (API 16) | [`ktk-android`](ktk-android) |
 | <img src="docs/screenshots/symbian/week.jpg" width="160"> | **Symbian** | C++98, Qt 4.7, QML | Symbian^3 / Anna / Belle (проверено на Nokia N8, Belle FP2) | [`ktk-symbian`](ktk-symbian) |
+| <img src="docs/screenshots/wp81/week.png" width="160"> | **Windows Phone** | C#, XAML | Windows Phone 8.1 (Silverlight) | [`ktk-wp81`](ktk-wp81) |
 
 ## Скачать
 
-Готовые сборки (`.deb` / `.ipa`, `.apk`, `.sis`) лежат в [Releases](../../releases).
+Готовые сборки (`.deb` / `.ipa`, `.apk`, `.sis`, `.xap`) лежат в [Releases](../../releases).
 
 ## Зачем это нужно
 
@@ -27,8 +28,9 @@ Android 4.1 и Nokia на Symbian.
 | iOS | libcurl 8.0.1 + OpenSSL 3.4.6, корни Mozilla |
 | Android | системный стек, TLS 1.2 включается вручную, корни ISRG вшиты в APK |
 | Symbian | BearSSL поверх `QTcpSocket`, корни ISRG вшиты в приложение |
+| Windows Phone | системный стек (WinHTTP, Windows.Web.Http), TLS 1.2 нативно |
 
-Протокол у всех трёх общий: серверные функции TanStack Start в формате seroval. Он перенесён из бота
+Протокол у всех четырёх общий: серверные функции TanStack Start в формате seroval. Он перенесён из бота
 [kurumihere/ktk-schedule](https://github.com/kurumihere/ktk-schedule).
 
 ## Сборка
@@ -38,6 +40,7 @@ Android 4.1 и Nokia на Symbian.
 - **iOS** — `./build-mac.sh` на Mac с Xcode 4.5–4.6 или `make package` через theos на Linux. [ktk-ios/README.md](ktk-ios/README.md)
 - **Android** — `./build.sh`: JDK 17+ и Android SDK (build-tools, platform 16), без Gradle. [ktk-android/README.md](ktk-android/README.md)
 - **Symbian** — `build-symbian.cmd` на Windows или `./build-symbian-wine.sh` на Linux под wine, с Qt SDK 1.2.1. Ядро можно проверить на Linux с Qt 5. [ktk-symbian/README.md](ktk-symbian/README.md), где взять SDK — [ktk-symbian/QT-SDK.txt](ktk-symbian/QT-SDK.txt)
+- **Windows Phone** — `KTKLegacy.sln` в Visual Studio 2015 с Windows Phone 8.1 Tools (или `msbuild`). [ktk-wp81/README.md](ktk-wp81/README.md)
 
 ## Скриншоты
 
@@ -57,6 +60,12 @@ Android 4.1 и Nokia на Symbian.
 <summary>Symbian Belle</summary>
 
 <img src="docs/screenshots/symbian/week-grade.jpg" width="240"> <img src="docs/screenshots/symbian/lesson.jpg" width="240"> <img src="docs/screenshots/symbian/menu.jpg" width="240"> <img src="docs/screenshots/symbian/sign-in.jpg" width="240">
+</details>
+
+<details>
+<summary>Windows Phone 8.1</summary>
+
+<img src="docs/screenshots/wp81/week.png" width="240"> <img src="docs/screenshots/wp81/grades.png" width="240"> <img src="docs/screenshots/wp81/lesson.png" width="240"> <img src="docs/screenshots/wp81/sign-in.png" width="240">
 </details>
 
 Имена преподавателей и логин на скриншотах вымышленные.

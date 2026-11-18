@@ -1,0 +1,143 @@
+<phone:PhoneApplicationPage
+    x:Class="KTKLegacy.WeekPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:phone="clr-namespace:Microsoft.Phone.Controls;assembly=Microsoft.Phone"
+    xmlns:shell="clr-namespace:Microsoft.Phone.Shell;assembly=Microsoft.Phone"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    FontFamily="{StaticResource PhoneFontFamilyNormal}"
+    FontSize="{StaticResource PhoneFontSizeNormal}"
+    Foreground="{StaticResource PhoneForegroundBrush}"
+    SupportedOrientations="Portrait"
+    shell:SystemTray.IsVisible="True">
+
+    <phone:PhoneApplicationPage.Resources>
+        <!-- Lesson row template used for both pairs and grades tabs -->
+        <DataTemplate x:Key="LessonTemplate">
+            <Border BorderBrush="{StaticResource PhoneSubtleBrush}"
+                    BorderThickness="0,0,0,1"
+                    Background="{StaticResource PhoneBackgroundBrush}"
+                    Padding="12,10,12,10"
+                    Margin="0,0,0,2">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                        <!-- Day header row -->
+                        <TextBlock Text="{Binding DayHeader}"
+                                   Style="{StaticResource PhoneTextSmallStyle}"
+                                   Foreground="{StaticResource PhoneAccentBrush}"
+                                   FontWeight="Bold"
+                                   Visibility="{Binding DayHeaderVisibility}"
+                                   Margin="0,0,0,4"/>
+                        <TextBlock Text="{Binding Discipline}" TextWrapping="Wrap"
+                                   FontSize="{StaticResource PhoneFontSizeMedium}"
+                                   FontWeight="SemiBold" Margin="0,2,0,2"/>
+                        <TextBlock Text="{Binding Details}"
+                                   Style="{StaticResource PhoneTextSmallStyle}"
+                                   Foreground="{StaticResource PhoneSubtleBrush}"
+                                   TextWrapping="Wrap"/>
+                    </StackPanel>
+                    <!-- Badge: grade / mark -->
+                    <Border Grid.Column="1"
+                            Background="{Binding BadgeBackground}"
+                            CornerRadius="16"
+                            Padding="10,6"
+                            Margin="12,0,0,0"
+                            VerticalAlignment="Center"
+                            Visibility="{Binding BadgeVisibility}">
+                        <TextBlock Text="{Binding Badge}"
+                                   FontSize="18"
+                                   FontWeight="Bold"
+                                   Foreground="White"/>
+                    </Border>
+                </Grid>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="DayHeaderTemplate">
+            <TextBlock Text="{Binding DayHeader}"
+                       Style="{StaticResource PhoneTextSmallStyle}"
+                       Foreground="{StaticResource PhoneAccentBrush}"
+                       FontWeight="Bold"
+                       Margin="12,16,12,4"/>
+        </DataTemplate>
+    </phone:PhoneApplicationPage.Resources>
+
+    <Grid Background="{StaticResource PhoneBackgroundBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Week navigation header -->
+        <Grid Grid.Row="0" Background="{StaticResource PhoneChromeBrush}" Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <Button x:Name="PreviousButton" Content="‹" Grid.Column="0"
+                    Width="64" Height="64" Click="PreviousButton_Click" Padding="0"
+                    FontSize="24" Foreground="{StaticResource PhoneAccentBrush}"/>
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center">
+                <TextBlock x:Name="WeekTitleText" Text="…" HorizontalAlignment="Center"
+                           Style="{StaticResource PhoneTextNormalStyle}"
+                           FontSize="{StaticResource PhoneFontSizeMedium}"
+                           FontWeight="SemiBold"/>
+                <ProgressBar x:Name="LoadingBar" IsIndeterminate="True"
+                             Visibility="Collapsed" Height="4" Margin="0,4,0,0"/>
+            </StackPanel>
+            <Button x:Name="NextButton" Content="›" Grid.Column="2"
+                    Width="64" Height="64" Click="NextButton_Click" Padding="0"
+                    FontSize="24" Foreground="{StaticResource PhoneAccentBrush}"/>
+        </Grid>
+
+        <!-- Offline / error banner -->
+        <Border x:Name="BannerBorder" Grid.Row="1"
+                Background="#FFF39C12" Padding="12,8"
+                CornerRadius="0,0,8,8"
+                Visibility="Collapsed" Margin="0,0,0,8">
+            <TextBlock x:Name="BannerText" Text="" TextWrapping="Wrap"
+                       Foreground="White" Style="{StaticResource PhoneTextSmallStyle}"/>
+        </Border>
+
+        <!-- Pairs / Grades tabs -->
+        <phone:Pivot x:Name="MainPivot" Grid.Row="2" SelectionChanged="MainPivot_SelectionChanged"
+                     Foreground="{StaticResource PhoneForegroundBrush}">
+            <phone:PivotItem Header="Пары">
+                <ListBox x:Name="PairsListBox" ItemTemplate="{StaticResource LessonTemplate}"
+                         SelectionChanged="LessonList_SelectionChanged"
+                         Background="Transparent"/>
+            </phone:PivotItem>
+            <phone:PivotItem Header="Оценки">
+                <ListBox x:Name="GradesListBox" ItemTemplate="{StaticResource LessonTemplate}"
+                         SelectionChanged="LessonList_SelectionChanged"
+                         Background="Transparent"/>
+            </phone:PivotItem>
+        </phone:Pivot>
+    </Grid>
+
+    <phone:PhoneApplicationPage.ApplicationBar>
+        <shell:ApplicationBar IsVisible="True" Mode="Default" Opacity="1.0">
+            <shell:ApplicationBarIconButton
+                x:Name="TodayButton"
+                IconUri="/Assets/Icons/today.png"
+                Text="Сегодня"
+                Click="TodayButton_Click"/>
+            <shell:ApplicationBarIconButton
+                x:Name="RefreshButton"
+                IconUri="/Assets/Icons/refresh.png"
+                Text="Обновить"
+                Click="RefreshButton_Click"/>
+            <shell:ApplicationBar.MenuItems>
+                <shell:ApplicationBarMenuItem Text="Выйти" Click="SignOutMenuItem_Click"/>
+            </shell:ApplicationBar.MenuItems>
+        </shell:ApplicationBar>
+    </phone:PhoneApplicationPage.ApplicationBar>
+</phone:PhoneApplicationPage>

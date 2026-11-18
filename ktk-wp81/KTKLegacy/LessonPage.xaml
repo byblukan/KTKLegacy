@@ -1,0 +1,37 @@
+<phone:PhoneApplicationPage
+    x:Class="KTKLegacy.LessonPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:phone="clr-namespace:Microsoft.Phone.Controls;assembly=Microsoft.Phone"
+    xmlns:shell="clr-namespace:Microsoft.Phone.Shell;assembly=Microsoft.Phone"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    FontFamily="{StaticResource PhoneFontFamilyNormal}"
+    FontSize="{StaticResource PhoneFontSizeNormal}"
+    Foreground="{StaticResource PhoneForegroundBrush}"
+    SupportedOrientations="Portrait"
+    shell:SystemTray.IsVisible="True">
+
+    <Grid Background="{StaticResource PhoneBackgroundBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Title panel -->
+        <StackPanel Grid.Row="0" Margin="24,20,24,8">
+            <TextBlock Text="КТК" Style="{StaticResource PhoneTextSmallStyle}"
+                       Foreground="{StaticResource PhoneAccentBrush}" FontWeight="Bold"/>
+            <TextBlock x:Name="PageTitle" Text="Пара" Style="{StaticResource PhoneTextTitle1Style}"
+                       Margin="0,-4,0,0" FontSize="36"/>
+        </StackPanel>
+
+        <!-- Content -->
+        <ScrollViewer Grid.Row="1" Padding="16,0,16,24">
+            <Border Background="{StaticResource PhoneChromeBrush}" CornerRadius="12" Padding="16">
+                <StackPanel x:Name="ContentPanel"/>
+            </Border>
+        </ScrollViewer>
+    </Grid>
+</phone:PhoneApplicationPage>

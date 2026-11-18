@@ -1,0 +1,16 @@
+﻿# Visual Studio / MSBuild
+bin/
+obj/
+*.user
+*.suo
+*.cache
+*.log
+*.tlog
+*.lastbuildstate
+
+# XAP build artifacts
+*.xap
+
+# OS
+Thumbs.db
+desktop.ini
