@@ -1,0 +1,135 @@
+# CI for KTKLegacy: each client builds in its own job, all in parallel, on fresh runners.
+#
+# - Android: ./build.sh (aapt2 -> javac -> d8 -> zipalign -> apksigner), no Gradle.
+# - iOS 6:   theos on Linux (see ktk-ios/README.md), packages both .deb and .ipa.
+# - Symbian: the phone core (TLS, HTTP, seroval, JSON, client) builds with Qt 5 on a PC,
+#            so ktk-cli selftest and an app-check build are enough here. The full .sis
+#            needs the Qt SDK 1.2.1 toolchain under wine and is intentionally left out.
+#
+# Artifacts (ktk.apk, the .deb and .ipa) are uploaded from every run.
+
+name: CI
+
+on:
+  push:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Cancel superseded runs of the same branch.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    name: Android (ktk.apk, API 16)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # The obsolete platform 16 and any modern build-tools; licenses are pre-accepted
+      # on runner images, but accept them anyway to be safe.
+      - name: Install API 16 platform and build-tools
+        run: |
+          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$sdkmanager" --licenses >/dev/null 2>&1 || true
+          "$sdkmanager" --install "platforms;android-16" "build-tools;34.0.0" >/dev/null
+
+      - name: Build
+        working-directory: ktk-android
+        run: ./build.sh
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v6
+        with:
+          name: ktk-android-apk
+          path: ktk-android/build/ktk.apk
+
+  ios:
+    name: iOS 6 (.deb and .ipa via theos, armv7)
+    runs-on: ubuntu-24.04
+    env:
+      THEOS: /home/runner/theos
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Cache theos (toolchain and SDK)
+        id: theos-cache
+        uses: actions/cache@v6
+        with:
+          path: /home/runner/theos
+          key: theos-ubuntu-v2
+
+      # The steps from ktk-ios/README.md (theos on Linux): theos itself, the iOS
+      # cross-toolchain and the last SDK with armv7 and a 6.0 deployment target.
+      - name: Set up theos
+        if: steps.theos-cache.outputs.cache-hit != 'true'
+        run: |
+          git clone --recursive https://github.com/theos/theos.git "$THEOS"
+          mkdir -p "$THEOS/toolchain"
+          curl -Lo /tmp/iOSToolchain.tar.xz \
+            https://github.com/L1ghtmann/llvm-project/releases/latest/download/iOSToolchain-x86_64.tar.xz
+          tar -xf /tmp/iOSToolchain.tar.xz -C "$THEOS/toolchain"
+          git clone --depth 1 --filter=blob:none --sparse https://github.com/theos/sdks.git /tmp/sdks
+          git -C /tmp/sdks sparse-checkout set iPhoneOS9.3.sdk
+          cp -r /tmp/sdks/iPhoneOS9.3.sdk "$THEOS/sdks/"
+
+          # Patch two defects in theos/sdks iPhoneOS9.3.sdk:
+          # 1. libSystem.B.tbd re-exports /usr/lib/system/liblaunch.dylib, but the SDK
+          #    ships no liblaunch stub, causing ld64 to fail with:
+          #    "file not found: /usr/lib/system/liblaunch.dylib".
+          # 2. libsystem_c.tbd omitted 8 standard libc symbols (memcpy, memset, strcmp, etc.).
+          sed -i 's|, /usr/lib/system/liblaunch.dylib||g' \
+            "$THEOS/sdks/iPhoneOS9.3.sdk/usr/lib/libSystem.B.tbd"
+          sed -i 's|_memmem,|_memchr, _memcmp, _memcpy, _memmove, _memset, _strchr, _strcmp, _strncmp, _memmem,|g' \
+            "$THEOS/sdks/iPhoneOS9.3.sdk/usr/lib/system/libsystem_c.tbd"
+
+      - name: Build .deb and .ipa
+        working-directory: ktk-ios
+        run: |
+          make package KTKLegacy_LDFLAGS="-LVendor/curl/lib -lcurl -lssl -lcrypto -lz -Wl,-w"
+          # Package .ipa for AppSync / IPA Installer (mirrors build-mac.sh)
+          mkdir -p Payload
+          cp -R .theos/_/Applications/KTKLegacy.app Payload/
+          zip -qry packages/KTKLegacy.ipa Payload
+          rm -rf Payload
+
+      - name: Upload iOS packages (.deb and .ipa)
+        uses: actions/upload-artifact@v6
+        with:
+          name: ktk-ios-packages
+          path: ktk-ios/packages/*
+
+  symbian-core:
+    name: Symbian core (ktk-cli selftest, Qt 5)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+
+      # QtCore/QtNetwork (plus Qt Widgets for app-check) is enough; the C++98 core
+      # also builds with Qt 5, which is how the protocol is developed on a PC.
+      - name: Install Qt 5
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends qtbase5-dev
+
+      - name: Build ktk-cli and app-check
+        working-directory: ktk-symbian
+        run: |
+          for tool in ktk-cli app-check; do
+            mkdir -p "build/$tool"
+            (cd "build/$tool" && qmake "../../tools/$tool/$tool.pro" DEFINES+=QT_NO_DEPRECATED_WARNINGS QMAKE_CXXFLAGS+="-Wno-deprecated-declarations" && make -j"$(nproc)")
+          done
+
+      # JSON, seroval, calendar checks; no network. app-check is only built, not run:
+      # it needs a live session on the site.
+      - name: Run selftest
+        working-directory: ktk-symbian
+        run: ./build/ktk-cli/ktk-cli selftest
