@@ -59,6 +59,10 @@ namespace KTKLegacy
                     return e.Detail ?? "Неверный логин или пароль.";
                 case KtkErrorCode.BadResponse:
                     return "Сайт ответил непонятно. Возможно, он обновился.";
+                case KtkErrorCode.HttpStatus:
+                    if (e.Status == 403)
+                        return "Сайт отклонил запрос (403). Если ошибка повторяется, выйдите из аккаунта и войдите снова.";
+                    return e.Detail ?? "Ошибка сайта.";
                 default:
                     return e.Detail ?? "Ошибка сайта.";
             }

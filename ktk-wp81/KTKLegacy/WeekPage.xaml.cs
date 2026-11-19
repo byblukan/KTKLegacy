@@ -168,7 +168,8 @@ namespace KTKLegacy
             {
                 LessonRow row = (LessonRow)lb.SelectedItem;
                 lb.SelectedItem = null;
-                if (_week != null)
+                // _week must belong to the week on screen (it may still be the previous one)
+                if (_week != null && _week.WeekStart == _weekStart)
                 {
                     KtkClient.Shared.SetShownWeek(_week);
                     NavigationService.Navigate(
@@ -246,6 +247,13 @@ namespace KTKLegacy
                 _week = cached;
                 Render(cached);
             }
+            else
+            {
+                // Nothing cached for this week: drop the previous week's rows, so they are not
+                // shown under the new title (and stay there if the load fails).
+                _week = null;
+                Render(null);
+            }
             LoadWeek();
         }
 
@@ -311,7 +319,7 @@ namespace KTKLegacy
             _gradesRows.Clear();
             _allLessons.Clear();
 
-            if (week == null) return;
+            if (week == null) { UpdateMenu(); return; }
             var allLessons = week.AllLessons();
             _allLessons    = allLessons;
 

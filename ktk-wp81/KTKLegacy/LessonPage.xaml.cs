@@ -179,7 +179,11 @@ namespace KTKLegacy
             try
             {
                 // Copy from IsolatedStorage to ApplicationData so Launcher can open it.
-                var localFolder = Windows.Storage.ApplicationData.Current.LocalFolder;
+                // A dedicated subfolder: nothing from the site can collide with the app's own
+                // files in the LocalFolder root, and sign-out deletes the whole folder.
+                var localRoot   = Windows.Storage.ApplicationData.Current.LocalFolder;
+                var localFolder = await localRoot.CreateFolderAsync(KtkClient.OpenDirectory,
+                    Windows.Storage.CreationCollisionOption.OpenIfExists);
                 var targetFile  = await localFolder.CreateFileAsync(displayName,
                     Windows.Storage.CreationCollisionOption.ReplaceExisting);
                 using (var isoStore = IsolatedStorageFile.GetUserStoreForApplication())

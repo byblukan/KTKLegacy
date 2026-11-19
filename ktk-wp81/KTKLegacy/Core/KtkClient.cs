@@ -366,7 +366,12 @@ namespace KTKLegacy
             var resp = await Send(req, !post);
             AbsorbCookies(resp.SetCookies, jar);
 
-            if (fn != Fn.SignIn && (resp.Status == 401 || resp.Status == 403))
+            // 401 is an expired session. 403 may also come from the site's WAF (for example when
+            // it starts requiring other headers), and that must not wipe the saved session:
+            // 403 counts as "sign in again" only when the body is an in-band auth error.
+            if (fn != Fn.SignIn && resp.Status == 401)
+                throw new KtkException(KtkErrorCode.LoginRequired, null);
+            if (fn != Fn.SignIn && resp.Status == 403 && BodyIsAuthError(resp.Body))
                 throw new KtkException(KtkErrorCode.LoginRequired, null);
             if (resp.Status != 200)
                 throw KtkException.ForStatus(resp.Status);
@@ -376,6 +381,19 @@ namespace KTKLegacy
             catch { throw new KtkException(KtkErrorCode.BadResponse, null); }
             if (raw == null) throw new KtkException(KtkErrorCode.BadResponse, null);
             return Seroval.Decode(raw);
+        }
+
+        private static bool BodyIsAuthError(byte[] body)
+        {
+            if (body == null || body.Length == 0) return false;
+            try
+            {
+                object raw = Json.Parse(Encoding.UTF8.GetString(body, 0, body.Length));
+                if (raw == null) return false;
+                var err = ServerError(Seroval.Decode(raw));
+                return err != null && err.Code == KtkErrorCode.LoginRequired;
+            }
+            catch { return false; }
         }
 
         private async Task<object> Call(Fn fn, IList<KeyValuePair<string, object>> fields,
@@ -533,23 +551,51 @@ namespace KTKLegacy
             }
         }
 
+        /// <summary>Folder (in LocalFolder) holding the copies handed to the system file handler.</summary>
+        public const string OpenDirectory = "ktk-open";
+
         private void ForgetCaches()
         {
             DeleteIsoDir("ktk-weeks");
             DeleteIsoDir("ktk-files");
+            DeleteIsoDir(OpenDirectory);
+            var ignored = DeleteOpenedFiles();
         }
 
+        // Files are stored as ktk-files/<fileId>/<name>, so the delete has to recurse.
         private static void DeleteIsoDir(string dir)
         {
             try
             {
                 using (var store = IsolatedStorageFile.GetUserStoreForApplication())
-                {
-                    if (!store.DirectoryExists(dir)) return;
-                    foreach (var f in store.GetFileNames(dir + "/*"))
-                        try { store.DeleteFile(dir + "/" + f); } catch { }
-                    try { store.DeleteDirectory(dir); } catch { }
-                }
+                    DeleteIsoDir(store, dir);
+            }
+            catch { }
+        }
+
+        private static void DeleteIsoDir(IsolatedStorageFile store, string dir)
+        {
+            try
+            {
+                if (!store.DirectoryExists(dir)) return;
+                foreach (var f in store.GetFileNames(dir + "/*"))
+                    try { store.DeleteFile(dir + "/" + f); } catch { }
+                foreach (var d in store.GetDirectoryNames(dir + "/*"))
+                    DeleteIsoDir(store, dir + "/" + d);
+                try { store.DeleteDirectory(dir); } catch { }
+            }
+            catch { }
+        }
+
+        // Same folder through the WinRT API, in case LocalFolder and IsolatedStorage
+        // are not the same physical store on a given device.
+        private static async Task DeleteOpenedFiles()
+        {
+            try
+            {
+                var root   = Windows.Storage.ApplicationData.Current.LocalFolder;
+                var folder = await root.GetFolderAsync(OpenDirectory);
+                await folder.DeleteAsync();
             }
             catch { }
         }
@@ -837,7 +883,7 @@ namespace KTKLegacy
                 req.OutputPath = partial;
 
                 var resp = await Send(req, false);
-                if (resp.Status == 401 || resp.Status == 403)
+                if (resp.Status == 401)
                     throw new KtkException(KtkErrorCode.LoginRequired, null);
                 if (resp.Status != 200)
                     throw KtkException.ForStatus(resp.Status);
