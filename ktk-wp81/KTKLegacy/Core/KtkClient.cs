@@ -456,11 +456,8 @@ namespace KTKLegacy
             session.TeacherHash = session.Student ? "" : (hash ?? "teacher");
             session.Branch      = Json.Str(user.ContainsKey("branch") ? user["branch"] : null) ?? "";
             string detectedSubgroup = FindSubgroup(user);
-            if (!string.IsNullOrEmpty(detectedSubgroup))
-            {
-                session.PersonalSubgroup = detectedSubgroup;
-                session.Subgroup         = detectedSubgroup;
-            }
+            session.PersonalSubgroup = !string.IsNullOrEmpty(detectedSubgroup) ? detectedSubgroup : "left";
+            session.Subgroup         = session.PersonalSubgroup;
 
             ForgetCaches();
             session.Save();
@@ -561,10 +558,13 @@ namespace KTKLegacy
 
         public string WeekScope(KtkSession session)
         {
-            if (session != null && session.Student && session.Group > 0
-                    && (session.Subgroup == "all" || (!string.IsNullOrEmpty(session.PersonalSubgroup) && session.Subgroup != session.PersonalSubgroup)))
+            if (session != null && session.Student && session.Group > 0)
             {
-                return "group-" + session.Group;
+                string personal = !string.IsNullOrEmpty(session.PersonalSubgroup) ? session.PersonalSubgroup : "left";
+                if (session.Subgroup == "all" || session.Subgroup != personal)
+                {
+                    return "group-" + session.Group;
+                }
             }
             return "personal";
         }
@@ -625,8 +625,9 @@ namespace KTKLegacy
         private async Task<Dictionary<string, object>> FetchWeek(string weekStart, KtkSession session)
         {
             bool teacher = !session.Student;
+            string personal = !string.IsNullOrEmpty(session.PersonalSubgroup) ? session.PersonalSubgroup : "left";
             bool useGroup = session.Student && session.Group > 0
-                && (session.Subgroup == "all" || (!string.IsNullOrEmpty(session.PersonalSubgroup) && session.Subgroup != session.PersonalSubgroup));
+                && (session.Subgroup == "all" || session.Subgroup != personal);
             var fields = useGroup
                 ? new[]{ new KeyValuePair<string, object>("groupId", session.Group.ToString()), new KeyValuePair<string, object>("weekStart", weekStart) }
                 : new[]{ new KeyValuePair<string, object>("weekStart", weekStart) };
@@ -696,6 +697,34 @@ namespace KTKLegacy
             lock (extras) return new Dictionary<string, object>(extras);
         }
 
+        private long RecoverGroupId(KtkSession session, string weekStart)
+        {
+            if (_shown != null)
+            {
+                long gid = ExtractGroupId(_shown);
+                if (gid > 0) return gid;
+            }
+            var cached = CachedWeek(weekStart, "personal");
+            if (cached != null)
+            {
+                long gid = ExtractGroupId(cached);
+                if (gid > 0) return gid;
+            }
+            return 0;
+        }
+
+        private static long ExtractGroupId(Week week)
+        {
+            if (week == null) return 0;
+            foreach (var l in week.AllLessons())
+            {
+                long gid;
+                if (!string.IsNullOrEmpty(l.GroupId) && long.TryParse(l.GroupId.Trim(), out gid) && gid > 0)
+                    return gid;
+            }
+            return 0;
+        }
+
         /// <summary>The week from the site, with tasks and files. When offline returns a cached copy
         /// (week.Offline=true) + the error. Returns (null, LoginRequired) on session expiry.</summary>
         public async Task<WeekResult> LoadWeek(string weekStart)
@@ -705,9 +734,23 @@ namespace KTKLegacy
             if (session == null || !WeekStartRx.IsMatch(weekStart ?? ""))
                 return new WeekResult(null, new KtkException(KtkErrorCode.LoginRequired, null));
 
+            if (session.Student && session.Group <= 0)
+            {
+                long recovered = RecoverGroupId(session, weekStart);
+                if (recovered > 0)
+                {
+                    lock (_sessionLock)
+                    {
+                        session.Group = recovered;
+                        session.Save();
+                    }
+                }
+            }
+
+            string personal = !string.IsNullOrEmpty(session.PersonalSubgroup) ? session.PersonalSubgroup : "left";
             string scope = WeekScope(session);
             bool useGroup = session.Student && session.Group > 0
-                && (session.Subgroup == "all" || (!string.IsNullOrEmpty(session.PersonalSubgroup) && session.Subgroup != session.PersonalSubgroup));
+                && (session.Subgroup == "all" || session.Subgroup != personal);
 
             KtkException error = null;
             Week week = null;
@@ -718,16 +761,26 @@ namespace KTKLegacy
                 if (week != null)
                 {
                     SaveWeekPayload(payload, weekStart, scope);
-                    if (session.Student && !useGroup && string.IsNullOrEmpty(session.PersonalSubgroup))
+                    if (session.Student)
                     {
-                        string inferred = Week.InferSubgroup(week.Days);
-                        if (!string.IsNullOrEmpty(inferred))
+                        bool saveSession = false;
+                        if (session.Group <= 0)
                         {
-                            session.PersonalSubgroup = inferred;
-                            if (string.IsNullOrEmpty(session.Subgroup) || session.Subgroup == "left")
-                                session.Subgroup = inferred;
-                            session.Save();
+                            long gid = ExtractGroupId(week);
+                            if (gid > 0) { session.Group = gid; saveSession = true; }
                         }
+                        if (!useGroup && string.IsNullOrEmpty(session.PersonalSubgroup))
+                        {
+                            string inferred = Week.InferSubgroup(week.Days);
+                            if (!string.IsNullOrEmpty(inferred))
+                            {
+                                session.PersonalSubgroup = inferred;
+                                if (string.IsNullOrEmpty(session.Subgroup) || session.Subgroup == "left")
+                                    session.Subgroup = inferred;
+                                saveSession = true;
+                            }
+                        }
+                        if (saveSession) session.Save();
                     }
                 }
                 else error = new KtkException(KtkErrorCode.BadResponse, null);

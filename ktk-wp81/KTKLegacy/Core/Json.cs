@@ -64,6 +64,11 @@ namespace KTKLegacy
             if (value is long) return (long)value;
             if (value is double) return (long)(double)value;
             if (value is int) return (int)value;
+            if (value is string)
+            {
+                long lv;
+                if (long.TryParse(((string)value).Trim(), out lv)) return lv;
+            }
             return fallback;
         }
 
@@ -77,6 +82,11 @@ namespace KTKLegacy
             if (value is long) return (long)value;
             if (value is double) return (long)(double)value;
             if (value is int) return (int)value;
+            if (value is string)
+            {
+                long lv;
+                if (long.TryParse(((string)value).Trim(), out lv)) return lv;
+            }
             return null;
         }
 

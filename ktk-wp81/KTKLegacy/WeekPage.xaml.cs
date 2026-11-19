@@ -91,6 +91,7 @@ namespace KTKLegacy
         private Week   _week;
         private bool   _gradesMode;
         private bool   _loading;
+        private int    _loadToken;
 
         // All lessons in flat order (for index → LessonActivity navigation)
         private List<Lesson> _allLessons = new List<Lesson>();
@@ -152,7 +153,7 @@ namespace KTKLegacy
 
         private void RefreshButton_Click(object sender, EventArgs e)
         {
-            if (!_loading) LoadWeek();
+            LoadWeek();
         }
 
         private void MainPivot_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -212,6 +213,11 @@ namespace KTKLegacy
             if (session == null || session.Subgroup == subgroup) return;
             KtkClient.Shared.SetSubgroup(subgroup);
             UpdateMenu();
+            var cached = KtkClient.Shared.CachedWeek(_weekStart);
+            if (cached != null)
+            {
+                _week = cached;
+            }
             if (_week != null)
             {
                 Render(_week);
@@ -234,17 +240,24 @@ namespace KTKLegacy
         {
             _weekStart = weekStart;
             WeekTitleText.Text = CollegeCalendar.WeekTitle(weekStart);
+            var cached = KtkClient.Shared.CachedWeek(weekStart);
+            if (cached != null)
+            {
+                _week = cached;
+                Render(cached);
+            }
             LoadWeek();
         }
 
         private async void LoadWeek()
         {
-            if (_loading) return;
+            int token = ++_loadToken;
             SetLoading(true);
             ShowBanner(null);
             try
             {
                 var res = await KtkClient.Shared.LoadWeek(_weekStart);
+                if (token != _loadToken) return;
                 var week = res.Week;
                 var error = res.Error;
 
@@ -253,8 +266,12 @@ namespace KTKLegacy
                     GoToLoginPage();
                     return;
                 }
-                _week = week;
-                Render(week);
+                if (week != null)
+                {
+                    _week = week;
+                    KtkClient.Shared.SetShownWeek(week);
+                    Render(week);
+                }
                 if (error != null)
                     ShowBanner(week != null && week.Offline
                         ? "Нет связи. Показаны сохранённые данные.\n" + KtkException.Text(error)
@@ -262,7 +279,8 @@ namespace KTKLegacy
             }
             finally
             {
-                SetLoading(false);
+                if (token == _loadToken)
+                    SetLoading(false);
             }
         }
 

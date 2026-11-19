@@ -56,8 +56,10 @@ namespace KTKLegacy
                     session.Branch      = OrEmpty(Json.Str(d.ContainsKey("branch")      ? d["branch"]      : null));
                     session.PersonalSubgroup = OrEmpty(Json.Str(d.ContainsKey("personalSubgroup") ? d["personalSubgroup"] : null));
                     session.Subgroup         = OrEmpty(Json.Str(d.ContainsKey("subgroup")         ? d["subgroup"]         : null));
+                    if (string.IsNullOrEmpty(session.PersonalSubgroup))
+                        session.PersonalSubgroup = "left";
                     if (string.IsNullOrEmpty(session.Subgroup))
-                        session.Subgroup = string.IsNullOrEmpty(session.PersonalSubgroup) ? "left" : session.PersonalSubgroup;
+                        session.Subgroup = session.PersonalSubgroup;
                     return session;
                 }
             }
