@@ -184,7 +184,7 @@ Session Session::fromVariant(const QVariant &v)
     s.branch = Json::string(at(d, "branch"));
     s.personalSubgroup = Json::string(at(d, "personalSubgroup"));
     s.subgroup = Json::string(at(d, "subgroup"));
-    if (s.subgroup.isEmpty()) s.subgroup = s.personalSubgroup.isEmpty() ? QLatin1String("left") : s.personalSubgroup;
+    // Empty subgroup stays empty: it means "personal schedule, show all pairs".
     return s;
 }
 
@@ -294,45 +294,47 @@ HttpResponse Client::send(Http &http, HttpRequest request, bool idempotent)
 /// survives a restart.
 void Client::absorbCookies(const QList<QByteArray> &lines, QMap<QString, QString> *jar, int generation)
 {
-    QMutexLocker locker(&m_lock);
-    const bool current = jar == 0;
-    if (current) {
-        if (generation != m_generation || m_session.isNull()) return;   // signed out meanwhile
-        jar = &m_session.cookies;
-    }
-    bool changed = false;
-    for (int i = 0; i < lines.size(); ++i) {
-        const QString line = QString::fromUtf8(lines.at(i));
-        const QStringList parts = line.split(QLatin1Char(';'));
-        const QString pair = parts.at(0).trimmed();
-        const int equals = pair.indexOf(QLatin1Char('='));
-        if (equals <= 0) continue;
-        const QString name = pair.left(equals).trimmed();
-        const QString value = pair.mid(equals + 1).trimmed();
-        bool expired = value.isEmpty();
-        for (int k = 1; k < parts.size(); ++k) {
-            const QString attribute = parts.at(k).trimmed().toLower();
-            if (attribute.startsWith(QLatin1String("max-age="))) {
-                bool ok = false;
-                const qint64 age = attribute.mid(8).trimmed().toLongLong(&ok);
-                if (ok && age <= 0) expired = true;
+    bool expiredAll = false;
+    {
+        QMutexLocker locker(&m_lock);
+        const bool current = jar == 0;
+        if (current) {
+            if (generation != m_generation || m_session.isNull()) return;   // signed out meanwhile
+            jar = &m_session.cookies;
+        }
+        bool changed = false;
+        for (int i = 0; i < lines.size(); ++i) {
+            const QString line = QString::fromUtf8(lines.at(i));
+            const QStringList parts = line.split(QLatin1Char(';'));
+            const QString pair = parts.at(0).trimmed();
+            const int equals = pair.indexOf(QLatin1Char('='));
+            if (equals <= 0) continue;
+            const QString name = pair.left(equals).trimmed();
+            const QString value = pair.mid(equals + 1).trimmed();
+            bool expired = value.isEmpty();
+            for (int k = 1; k < parts.size(); ++k) {
+                const QString attribute = parts.at(k).trimmed().toLower();
+                if (attribute.startsWith(QLatin1String("max-age="))) {
+                    bool ok = false;
+                    const qint64 age = attribute.mid(8).trimmed().toLongLong(&ok);
+                    if (ok && age <= 0) expired = true;
+                }
+            }
+            if (expired) {
+                if (jar->remove(name) > 0) changed = true;
+            } else if (jar->value(name) != value || !jar->contains(name)) {
+                jar->insert(name, value);
+                changed = true;
             }
         }
-        if (expired) {
-            if (jar->remove(name) > 0) changed = true;
-        } else if (jar->value(name) != value || !jar->contains(name)) {
-            jar->insert(name, value);
-            changed = true;
+        if (changed && current) {
+            // No early return when the jar becomes empty: saveSessionLocked() removes the saved
+            // session so it cannot come back after a restart.
+            saveSessionLocked();
+            if (m_session.cookies.isEmpty()) expiredAll = true;
         }
     }
-    if (changed && current) {
-        if (m_session.cookies.isEmpty()) {
-            // Every cookie expired: keep the last known ones on disk until the site says
-            // LoginRequired, which signs out properly.
-            return;
-        }
-        saveSessionLocked();
-    }
+    if (expiredAll) emit sessionExpired();
 }
 
 QVariant Client::callOnce(Http &http, Fn fn, const QString &path, const Seroval::Fields &fields,
@@ -367,10 +369,17 @@ QVariant Client::callOnce(Http &http, Fn fn, const QString &path, const Seroval:
 
     const HttpResponse response = send(http, req, !post);
     absorbCookies(response.setCookies, jar, generation);
-    if (fn != SignIn && (response.status == 401 || response.status == 403)) throw KtkError(KtkError::LoginRequired);
-    if (response.status != 200) throw KtkError::fromStatus(response.status);
     bool ok = false;
     const QVariant raw = Json::parse(response.body, &ok, true);
+    // 401 is always an expired session. 403 can also be the site's WAF: it only means
+    // "sign in again" when the body carries an in-band auth error.
+    if (fn != SignIn && response.status == 401) throw KtkError(KtkError::LoginRequired);
+    if (fn != SignIn && response.status == 403) {
+        if (ok && serverError(Seroval::decode(raw)).isLoginRequired())
+            throw KtkError(KtkError::LoginRequired);
+        throw KtkError::fromStatus(response.status);
+    }
+    if (response.status != 200) throw KtkError::fromStatus(response.status);
     if (!ok) throw KtkError(KtkError::BadResponse);
     return Seroval::decode(raw);
 }
@@ -492,6 +501,9 @@ void Client::signOutLocally()
         QMutexLocker locker(&m_lock);
         m_session = Session();
         ++m_generation;
+        // Forget resolved server function addresses: they may change on the next site deploy,
+        // and a stale path must not survive into a new session.
+        m_paths.clear();
         saveSessionLocked();
     }
     forgetCaches();
@@ -552,6 +564,17 @@ void Client::saveWeekPayload(const QVariantMap &payload, const QString &weekStar
     writeFileAtomically(path, Json::serialize(payload));
 }
 
+/// False only when the personal timetable of the current week is refused as well.
+bool Client::sessionAlive(Http &http)
+{
+    try {
+        const QVariant probe = call(http, Student, fields1("weekStart", CollegeCalendar::currentWeekStart()));
+        return !serverError(probe).isLoginRequired();
+    } catch (const KtkError &e) {
+        return !e.isLoginRequired();
+    }
+}
+
 QVariantMap Client::fetchWeek(Http &http, const QString &weekStart, const Session &session)
 {
     const bool teacher = !session.student;
@@ -564,9 +587,18 @@ QVariantMap Client::fetchWeek(Http &http, const QString &weekStart, const Sessio
     } else {
         fields = fields1("weekStart", weekStart);
     }
-    const QVariant value = call(http, useGroup ? Group : (teacher ? Teacher : Student), fields);
-    const KtkError server = serverError(value);
-    if (server.isError()) throw server;
+    QVariant value;
+    try {
+        value = call(http, useGroup ? Group : (teacher ? Teacher : Student), fields);
+        const KtkError server = serverError(value);
+        if (server.isError()) throw server;
+    } catch (const KtkError &failure) {
+        // Like the bot: a refused group timetable may be a permission matter, so the session is
+        // dropped only when the personal timetable is refused too.
+        if (useGroup && failure.isLoginRequired() && sessionAlive(http))
+            throw KtkError(KtkError::HttpStatus, QString::fromUtf8("Сайт не дал доступ к расписанию группы. Выберите свою подгруппу."), 403);
+        throw;
+    }
     if (!Json::isMap(value) || !Json::isList(at(value.toMap(), "days"))) throw KtkError(KtkError::BadResponse);
     QVariantMap payload;
     payload.insert(QLatin1String("weekStart"), weekStart);
@@ -657,7 +689,7 @@ Week Client::loadWeek(const QString &weekStart, KtkError *error)
 
 // -- files ---------------------------------------------------------------------------------------
 
-QString Client::downloadFile(const TaskFile &file)
+QString Client::downloadFile(const TaskFile &file, int generation)
 {
     const QString directory = m_filesDir + QLatin1Char('/') + QString::number(file.fileId);
     const QString target = directory + QLatin1Char('/') + file.safeName();
@@ -681,13 +713,19 @@ QString Client::downloadFile(const TaskFile &file)
     try {
         Http http;
         const HttpResponse response = send(http, req, false);
-        if (response.status == 401 || response.status == 403) throw KtkError(KtkError::LoginRequired);
+        if (response.status == 401) throw KtkError(KtkError::LoginRequired);
         if (response.status != 200) throw KtkError::fromStatus(response.status);
+        // A sign-out (or an expired session) happened while the file was in flight: do not
+        // publish it. The catch below removes the partial download.
+        if (sessionGeneration() != generation) throw KtkError(KtkError::BadResponse);
         QFile::remove(target);
         if (!QFile::rename(partial, target)) throw KtkError(KtkError::File, QString::fromUtf8("Не удалось сохранить файл."));
-    } catch (...) {
+    } catch (const KtkError &e) {
         QFile::remove(partial);
         throw;
+    } catch (...) {
+        QFile::remove(partial);
+        throw KtkError(KtkError::File, QString::fromUtf8("Неизвестная ошибка скачивания."));
     }
     return target;
 }

@@ -64,17 +64,43 @@ namespace KTKLegacy
             return sb.ToString();
         }
 
+        /// <summary>JSON string escaping for a seroval-escaped value: the site receives the
+        /// escaped string as JSON text, so backslashes and quotes need a second escaping pass.</summary>
+        private static string EscapeJsonString(string value)
+        {
+            var sb = new StringBuilder(value.Length + 8);
+            foreach (char c in value)
+            {
+                switch (c)
+                {
+                    case '"':  sb.Append("\\\""); break;
+                    case '\\': sb.Append("\\\\"); break;
+                    case '\b': sb.Append("\\b"); break;
+                    case '\f': sb.Append("\\f"); break;
+                    case '\n': sb.Append("\\n"); break;
+                    case '\r': sb.Append("\\r"); break;
+                    case '\t': sb.Append("\\t"); break;
+                    default:
+                        if (c < 0x20) sb.AppendFormat("\\u{0:X4}", (int)c);
+                        else sb.Append(c);
+                        break;
+                }
+            }
+            return sb.ToString();
+        }
+
         /// <summary>{data: {field: value, ...}} as a server function payload; values are string or long.</summary>
         public static string Request(IList<KeyValuePair<string, object>> fields)
         {
-            // Build the seroval tree as a JSON string directly (mirrors the Android implementation).
+            // Build the seroval tree as JSON text (as Android's JSONObject.put does): first
+            // seroval-escape, then JSON-escape the result so the site sees the escaped string.
             var keys = new StringBuilder();
             var vals = new StringBuilder();
             for (int i = 0; i < fields.Count; i++)
             {
                 if (i > 0) { keys.Append(','); vals.Append(','); }
                 var kv = fields[i];
-                keys.Append('"').Append(Escape(kv.Key)).Append('"');
+                keys.Append('"').Append(EscapeJsonString(Escape(kv.Key))).Append('"');
                 if (kv.Value is long || kv.Value is int)
                 {
                     long n = kv.Value is int ? (long)(int)kv.Value : (long)kv.Value;
@@ -82,7 +108,7 @@ namespace KTKLegacy
                 }
                 else
                 {
-                    string s = Escape(kv.Value != null ? kv.Value.ToString() : "");
+                    string s = EscapeJsonString(Escape(kv.Value != null ? kv.Value.ToString() : ""));
                     vals.Append("{\"t\":1,\"s\":\"").Append(s).Append("\"}");
                 }
             }
@@ -233,9 +259,16 @@ namespace KTKLegacy
                 var vals = Json.List(props.ContainsKey("v") ? props["v"] : null) ?? new List<object>();
                 for (int i = 0; i < keys.Count && i < vals.Count; i++)
                 {
-                    string key = isMap
-                        ? Json.Str(Decode(keys[i], depth + 1))
-                        : Json.Str(keys[i]);
+                    string key = null;
+                    if (isMap)
+                    {
+                        key = Json.Str(Decode(keys[i], depth + 1));
+                    }
+                    else
+                    {
+                        string rawKey = Json.Str(keys[i]);
+                        if (rawKey != null) key = Seroval.Unescape(rawKey);
+                    }
                     if (key == null) continue;
                     out_[key] = Decode(vals[i], depth + 1);
                 }

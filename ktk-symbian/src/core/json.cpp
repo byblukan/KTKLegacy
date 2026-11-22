@@ -182,21 +182,30 @@ namespace
             const char *start = p;
             bool integral = true;
             if (p < end && *p == '-') ++p;
+            const char *digits = p;
             while (p < end && *p >= '0' && *p <= '9') ++p;
+            const int intDigits = int(p - digits);
+            // A leading zero is only allowed as the single integer digit ("0", "-0").
+            if (intDigits == 0 || (intDigits > 1 && *digits == '0')) { failed = true; return QVariant(); }
             if (p < end && *p == '.') {
                 integral = false;
                 ++p;
+                const char *fraction = p;
                 while (p < end && *p >= '0' && *p <= '9') ++p;
+                if (p == fraction) { failed = true; return QVariant(); }
             }
             if (p < end && (*p == 'e' || *p == 'E')) {
                 integral = false;
                 ++p;
                 if (p < end && (*p == '+' || *p == '-')) ++p;
+                const char *exponent = p;
                 while (p < end && *p >= '0' && *p <= '9') ++p;
+                if (p == exponent) { failed = true; return QVariant(); }
             }
             QByteArray text(start, int(p - start));
-            if (text.isEmpty() || text == "-") { failed = true; return QVariant(); }
-            if (integral && text.size() <= 18) {
+            // Nineteen digits can still fit into qint64; let toLongLong() decide the range so
+            // large ids are not silently rounded through double.
+            if (integral && intDigits <= 19) {
                 bool ok = false;
                 qlonglong v = text.toLongLong(&ok);
                 if (ok) return QVariant(v);

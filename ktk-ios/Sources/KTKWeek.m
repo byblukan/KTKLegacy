@@ -181,7 +181,11 @@ static NSString *KTKMarkSymbol(NSInteger mark) {
 }
 
 - (BOOL)isIndependent {
-    return self.pairTypeId == 9 || ([self.pairTypeName.lowercaseString rangeOfString:@"самосто"].location != NSNotFound);
+    if (self.pairTypeId == 9) {
+        return YES;
+    }
+    NSString *name = self.pairTypeName;
+    return name != nil && [name.lowercaseString rangeOfString:@"самосто"].location != NSNotFound;
 }
 
 - (NSString *)subgroupText {
@@ -342,7 +346,7 @@ static NSString *KTKMarkSymbol(NSInteger mark) {
                 lesson.hall = [l[@"auditoriumId"] stringValue];
             }
             lesson.pairTypeId = KTKNumber(l[@"pairTypeId"], 0);
-            lesson.pairTypeName = types[@(lesson.pairTypeId)];
+            lesson.pairTypeName = types[@(lesson.pairTypeId)] ?: @"";
             lesson.academicHours = (NSInteger)KTKNumber(l[@"academicHours"], 2);
             lesson.journalId = KTKNumber(l[@"journalId"], 0);
             NSDictionary *assessment = KTKDict(l[@"assessment"]);

@@ -20,6 +20,8 @@ namespace KTKLegacy
             {
                 SkipWs(text, ref pos);
                 object v = ParseValue(text, ref pos);
+                SkipWs(text, ref pos);
+                if (pos != text.Length) return null; // trailing garbage is not valid JSON
                 return v;
             }
             catch { return null; }

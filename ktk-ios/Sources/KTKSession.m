@@ -48,9 +48,7 @@ static NSString *KTKFallbackPath(void) {
     session.branch = [d[@"branch"] isKindOfClass:[NSString class]] ? d[@"branch"] : @"";
     session.personalSubgroup = [d[@"personalSubgroup"] isKindOfClass:[NSString class]] ? d[@"personalSubgroup"] : @"";
     session.subgroup = [d[@"subgroup"] isKindOfClass:[NSString class]] ? d[@"subgroup"] : @"";
-    if (!session.subgroup.length) {
-        session.subgroup = session.personalSubgroup.length ? session.personalSubgroup : @"left";
-    }
+    // An empty subgroup means "personal timetable, show all lessons" - keep it empty.
     return session;
 }
 

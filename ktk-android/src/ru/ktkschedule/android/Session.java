@@ -48,9 +48,7 @@ final class Session {
             session.branch = orEmpty(Json.string(d.get("branch")));
             session.personalSubgroup = orEmpty(Json.string(d.get("personalSubgroup")));
             session.subgroup = orEmpty(Json.string(d.get("subgroup")));
-            if (session.subgroup.isEmpty()) {
-                session.subgroup = session.personalSubgroup.isEmpty() ? "left" : session.personalSubgroup;
-            }
+            // An empty subgroup means "unknown/show all"; do not turn it into "left" here.
             return session;
         } catch (Exception e) {
             return null;

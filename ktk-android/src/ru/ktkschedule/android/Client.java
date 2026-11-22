@@ -308,19 +308,53 @@ final class Client {
 
         Http.Response response = send(request, !post);
         absorbCookies(response.setCookies, jar);
-        if (fn != Fn.SIGN_IN && (response.status == 401 || response.status == 403)) {
-            throw new KtkError(KtkError.Code.LOGIN_REQUIRED, null);
+        // Parse the body before classifying the status: a 403 is only a dead session when the
+        // body carries an in-band auth error; a WAF's 403 must not wipe the saved session.
+        Object raw = null;
+        try {
+            raw = new JSONTokener(new String(response.body, "UTF-8")).nextValue();
+        } catch (Exception e) {
+            // Classified below: a 401/403 needs no body, a 200 with no JSON is a bad answer.
+        }
+        if (fn != Fn.SIGN_IN) {
+            if (response.status == 401) {
+                throw new KtkError(KtkError.Code.LOGIN_REQUIRED, null);
+            }
+            if (response.status == 403 && bodyIsAuthError(raw)) {
+                throw new KtkError(KtkError.Code.LOGIN_REQUIRED, null);
+            }
         }
         if (response.status != 200) {
             throw KtkError.status(response.status);
         }
-        Object raw;
-        try {
-            raw = new JSONTokener(new String(response.body, "UTF-8")).nextValue();
-        } catch (Exception e) {
+        if (raw == null) {
             throw new KtkError(KtkError.Code.BAD_RESPONSE, null);
         }
         return Seroval.decode(raw);
+    }
+
+    /** A decoded body counts as an expired session only when the in-band error says so. */
+    private static boolean bodyIsAuthError(Object raw) {
+        if (raw == null) {
+            return false;
+        }
+        try {
+            KtkError error = serverError(Seroval.decode(raw));
+            return error != null && error.code == KtkError.Code.LOGIN_REQUIRED;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** False only when the personal timetable of the current week is refused as well. */
+    private boolean sessionAlive() {
+        try {
+            Object probe = call(Fn.STUDENT, new Object[][]{{"weekStart", CollegeCalendar.currentWeekStart()}}, null);
+            KtkError server = serverError(probe);
+            return server == null || server.code != KtkError.Code.LOGIN_REQUIRED;
+        } catch (KtkError e) {
+            return e.code != KtkError.Code.LOGIN_REQUIRED;
+        }
     }
 
     /** One server function call; after a site deploy its id changes, so look it up once again. */
@@ -433,14 +467,13 @@ final class Client {
         synchronized (this) {
             session = null;
             jar = new LinkedHashMap<String, String>();
+            // Forget resolved server function addresses: they may change on the next site deploy,
+            // and a stale path must not survive into a new session.
+            paths.edit().clear().commit();
         }
         Session.clear(context);
-        pool.execute(new Runnable() {
-            @Override
-            public void run() {
-                forgetCaches();
-            }
-        });
+        // Synchronous: a fast sign-in must not find its fresh cache deleted by a late cleanup.
+        forgetCaches();
     }
 
     /**
@@ -593,12 +626,22 @@ final class Client {
         boolean teacher = !session.student;
         boolean useGroup = session.student && session.group > 0
             && ("all".equals(session.subgroup) || (!session.personalSubgroup.isEmpty() && !session.subgroup.equals(session.personalSubgroup)));
-        Object value = useGroup
-            ? call(Fn.GROUP, new Object[][]{{"groupId", String.valueOf(session.group)}, {"weekStart", weekStart}}, null)
-            : call(teacher ? Fn.TEACHER : Fn.STUDENT, new Object[][]{{"weekStart", weekStart}}, null);
-        KtkError server = serverError(value);
-        if (server != null) {
-            throw server;
+        Object value;
+        try {
+            value = useGroup
+                ? call(Fn.GROUP, new Object[][]{{"groupId", String.valueOf(session.group)}, {"weekStart", weekStart}}, null)
+                : call(teacher ? Fn.TEACHER : Fn.STUDENT, new Object[][]{{"weekStart", weekStart}}, null);
+            KtkError server = serverError(value);
+            if (server != null) {
+                throw server;
+            }
+        } catch (KtkError failure) {
+            // Like the bot: a refused group timetable may be a permission matter, so the session is
+            // dropped only when the personal timetable is refused too.
+            if (useGroup && failure.code == KtkError.Code.LOGIN_REQUIRED && sessionAlive()) {
+                throw new KtkError(KtkError.Code.HTTP_STATUS, "Сайт не дал доступ к расписанию группы. Выберите свою подгруппу.", 403);
+            }
+            throw failure;
         }
         Map<String, Object> week = Json.map(value);
         if (week == null || Json.list(week.get("days")) == null) {
@@ -773,7 +816,7 @@ final class Client {
                     request.output = partial;
                     try {
                         Http.Response response = send(request, false);
-                        if (response.status == 401 || response.status == 403) {
+                        if (response.status == 401) {
                             throw new KtkError(KtkError.Code.LOGIN_REQUIRED, null);
                         }
                         if (response.status != 200) {

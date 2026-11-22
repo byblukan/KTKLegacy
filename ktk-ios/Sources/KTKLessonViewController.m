@@ -148,7 +148,14 @@ static const CGFloat KTKLabelWidth = 96;
 }
 
 - (KTKRow *)rowAt:(NSIndexPath *)indexPath {
-    return _sections[indexPath.section][1][indexPath.row];
+    if (!indexPath || indexPath.section < 0 || indexPath.section >= (NSInteger)_sections.count) {
+        return nil;
+    }
+    NSArray *rows = _sections[indexPath.section][1];
+    if (![rows isKindOfClass:[NSArray class]] || indexPath.row < 0 || indexPath.row >= (NSInteger)rows.count) {
+        return nil;
+    }
+    return rows[indexPath.row];
 }
 
 - (UIFont *)fontForRow:(KTKRow *)row {
@@ -187,6 +194,9 @@ static const CGFloat KTKLabelWidth = 96;
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
     KTKRow *row = [self rowAt:indexPath];
+    if (!row) {
+        return 44;
+    }
     CGSize size = [row.text sizeWithFont:[self fontForRow:row]
                        constrainedToSize:CGSizeMake([self textWidthForRow:row], 10000)
                            lineBreakMode:NSLineBreakByWordWrapping];
@@ -195,6 +205,9 @@ static const CGFloat KTKLabelWidth = 96;
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     KTKRow *row = [self rowAt:indexPath];
+    if (!row) {
+        return [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
+    }
     KTKInfoCell *cell = [tableView dequeueReusableCellWithIdentifier:@"info"];
     if (!cell) {
         cell = [[KTKInfoCell alloc] initWithStyle:UITableViewCellStyleValue2 reuseIdentifier:@"info"];
@@ -224,6 +237,9 @@ static const CGFloat KTKLabelWidth = 96;
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
     KTKRow *row = [self rowAt:indexPath];
+    if (!row) {
+        return;
+    }
     if (row.link) {
         _sheetLink = row.link;
         UIActionSheet *sheet = [[UIActionSheet alloc] initWithTitle:row.link delegate:self cancelButtonTitle:@"Отмена"
@@ -259,6 +275,13 @@ static const CGFloat KTKLabelWidth = 96;
     [self.tableView reloadRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationNone];
     [[KTKClient shared] downloadFile:file completion:^(NSString *path, NSError *error) {
         [self->_downloading removeObject:key];
+        if (![self isViewLoaded] || !self.view.window) {
+            return; // the screen is no longer in the hierarchy
+        }
+        KTKRow *row = [self rowAt:indexPath];
+        if (!row || !row.file || row.file.fileId != file.fileId) {
+            return; // the row is gone or now shows another file
+        }
         [self.tableView reloadRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationNone];
         if (!path) {
             [self alert:KTKErrorText(error)];

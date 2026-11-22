@@ -54,12 +54,10 @@ namespace KTKLegacy
                     session.Group       = Json.Number(d.ContainsKey("group") ? d["group"] : null, 0);
                     session.TeacherHash = OrEmpty(Json.Str(d.ContainsKey("teacherHash") ? d["teacherHash"] : null));
                     session.Branch      = OrEmpty(Json.Str(d.ContainsKey("branch")      ? d["branch"]      : null));
+                    // "" is the canonical "unknown / not chosen" value. LoadWeek infers
+                    // personalSubgroup from the first personal week; an empty subgroup shows all.
                     session.PersonalSubgroup = OrEmpty(Json.Str(d.ContainsKey("personalSubgroup") ? d["personalSubgroup"] : null));
                     session.Subgroup         = OrEmpty(Json.Str(d.ContainsKey("subgroup")         ? d["subgroup"]         : null));
-                    if (string.IsNullOrEmpty(session.PersonalSubgroup))
-                        session.PersonalSubgroup = "left";
-                    if (string.IsNullOrEmpty(session.Subgroup))
-                        session.Subgroup = session.PersonalSubgroup;
                     return session;
                 }
             }

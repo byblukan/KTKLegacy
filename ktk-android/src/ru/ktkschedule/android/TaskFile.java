@@ -21,14 +21,25 @@ final class TaskFile {
         return caption + "." + extension;
     }
 
-    /** fileName() made safe as one path component: no separators, no leading dots, at most 120 chars. */
+    /** fileName() made safe as one path component: no separators, no leading dots, at most 120 chars.
+     *  Truncates the base name from the end but keeps the file extension intact, so two files with
+     *  different beginnings do not collide. */
     String safeName() {
-        String name = fileName().replaceAll("[/:\\\\\\x00]", "_");
+        String name = fileName();
+        name = name.replaceAll("[/:\\\\\\x00]", "_");
         while (name.startsWith(".")) {
             name = name.substring(1);
         }
-        if (name.length() > 120) {
-            name = name.substring(name.length() - 120);
+        // Preserve the extension so different files don't collide after truncation.
+        int dot = name.lastIndexOf('.');
+        String base = (dot > 0) ? name.substring(0, dot) : name;
+        String ext = (dot > 0) ? name.substring(dot) : "";
+        if (base.length() + ext.length() > 120) {
+            base = base.substring(0, 120 - ext.length());
+        }
+        name = base + ext;
+        while (name.startsWith(".")) {
+            name = name.substring(1);
         }
         return name.isEmpty() ? "file_" + fileId : name;
     }

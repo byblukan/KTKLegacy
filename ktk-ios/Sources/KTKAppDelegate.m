@@ -20,6 +20,10 @@
 }
 
 - (void)showRoot {
+    UIViewController *current = self.window.rootViewController;
+    if (current) {
+        [current dismissViewControllerAnimated:NO completion:nil]; // e.g. a file preview
+    }
     UIViewController *root = [KTKClient shared].session
         ? [[KTKWeekViewController alloc] init]
         : [[KTKLoginViewController alloc] init];

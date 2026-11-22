@@ -117,8 +117,10 @@ static UIColor *KTKBadgeColor(NSString *badge) {
     [super layoutSubviews];
     CGRect content = self.contentView.bounds;
     CGFloat width = content.size.width - 20;
+    // Same reserve as heightForLesson:: a badge takes 60 pt, a plain arrow 40 pt.
+    CGFloat reserve = self.accessoryView ? 60 : 40;
     self.textLabel.frame = CGRectMake(10, 7, width, 21);
-    self.detailTextLabel.frame = CGRectMake(10, 30, width, MAX(content.size.height - 36, 0));
+    self.detailTextLabel.frame = CGRectMake(10, 30, MAX(width - reserve, 0), MAX(content.size.height - 36, 0));
 }
 
 @end

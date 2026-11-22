@@ -176,7 +176,7 @@ int main(int argc, char *argv[])
                 err << "no such file\n";
                 return 2;
             }
-            out << client.downloadFile(file) << "\n";
+            out << client.downloadFile(file, client.sessionGeneration()) << "\n";
             return 0;
         }
         if (command == QLatin1String("signout")) {

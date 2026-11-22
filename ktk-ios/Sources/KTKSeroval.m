@@ -19,6 +19,7 @@ static const unichar KTKRaw[10] = {'\\', '"', '\n', '\r', '\b', '\t', '\f', 0x20
 @implementation KTKSerovalDecoder {
     NSMutableDictionary *_byId; // node id -> @[value, expanded node count]
     NSUInteger _nodes;
+    NSUInteger _depth;
 }
 
 - (instancetype)init {
@@ -37,80 +38,96 @@ static const unichar KTKRaw[10] = {'\\', '"', '\n', '\r', '\b', '\t', '\f', 0x20
 }
 
 - (id)decode:(id)node {
-    if (_failed || ![self charge:1]) {
-        return [NSNull null];
-    }
-    NSUInteger start = _nodes;
-    if ([node isKindOfClass:[NSArray class]]) {
-        return [self list:node];
-    }
-    if (![node isKindOfClass:[NSDictionary class]]) {
-        return node ?: [NSNull null];
-    }
-    NSDictionary *map = node;
-    NSNumber *nodeId = [map[@"i"] isKindOfClass:[NSNumber class]] ? map[@"i"] : nil;
-    // Indexed values (t: 4) and repeated ids point at an already decoded node.
-    if (nodeId) {
-        NSArray *known = _byId[nodeId];
-        if (known) {
-            [self charge:[known[1] unsignedIntegerValue]];
-            return known[0];
+    _depth++;
+    @try {
+        if (_failed || ![self charge:1]) {
+            return [NSNull null];
         }
-    }
-    id kind = map[@"t"];
-    if (![kind isKindOfClass:[NSNumber class]]) {
-        // Plain JSON around the tree, such as an unwrapped envelope.
-        NSMutableDictionary *out = [NSMutableDictionary dictionaryWithCapacity:map.count];
-        for (NSString *key in map) {
-            out[key] = [self decode:map[key]];
+        if (_depth > 200) {
+            _failed = YES;
+            return nil;
         }
-        return out;
-    }
-    id value;
-    switch ([kind integerValue]) {
-        case 1: { // string
-            id s = map[@"s"];
-            value = [s isKindOfClass:[NSString class]] ? [KTKSeroval unescape:s] : @"";
-            break;
+        NSUInteger start = _nodes;
+        if ([node isKindOfClass:[NSArray class]]) {
+            return [self list:node];
         }
-        case 0:   // number
-        case 3:   // bigint
-        case 5:   // date
-            value = map[@"s"] ?: [NSNull null];
-            break;
-        case 2: { // constant
-            id s = map[@"s"];
-            NSInteger constant = [s isKindOfClass:[NSNumber class]] ? [s integerValue] : -1;
-            value = constant == 2 ? (id)@YES : constant == 3 ? (id)@NO : (id)[NSNull null];
-            break;
+        if (![node isKindOfClass:[NSDictionary class]]) {
+            return node ?: [NSNull null];
         }
-        case 7:   // set
-        case 9: { // array
-            id items = map[@"a"];
-            value = [self list:[items isKindOfClass:[NSArray class]] ? items : @[]];
-            break;
+        NSDictionary *map = node;
+        NSNumber *nodeId = [map[@"i"] isKindOfClass:[NSNumber class]] ? map[@"i"] : nil;
+        // Indexed values (t: 4) and repeated ids point at an already decoded node.
+        if (nodeId) {
+            NSArray *known = _byId[nodeId];
+            if (known) {
+                [self charge:[known[1] unsignedIntegerValue]];
+                return known[0];
+            }
         }
-        case 10:  // object
-        case 11:  // null-prototype object
-            value = [self properties:map[@"p"] keyNodes:NO];
-            break;
-        case 8:   // Map
-            value = [self properties:map[@"e"] keyNodes:YES];
-            break;
-        default:  // promises, streams, symbols, dangling references: no schedule data
-            value = [NSNull null];
-            break;
+        id kind = map[@"t"];
+        if (![kind isKindOfClass:[NSNumber class]]) {
+            // Plain JSON around the tree, such as an unwrapped envelope.
+            NSMutableDictionary *out = [NSMutableDictionary dictionaryWithCapacity:map.count];
+            for (NSString *key in map) {
+                id decoded = [self decode:map[key]];
+                if (decoded) {
+                    out[key] = decoded;
+                }
+            }
+            return out;
+        }
+        id value;
+        switch ([kind integerValue]) {
+            case 1: { // string
+                id s = map[@"s"];
+                value = [s isKindOfClass:[NSString class]] ? [KTKSeroval unescape:s] : @"";
+                break;
+            }
+            case 0:   // number
+            case 3:   // bigint
+            case 5:   // date
+                value = map[@"s"] ?: [NSNull null];
+                break;
+            case 2: { // constant
+                id s = map[@"s"];
+                NSInteger constant = [s isKindOfClass:[NSNumber class]] ? [s integerValue] : -1;
+                value = constant == 2 ? (id)@YES : constant == 3 ? (id)@NO : (id)[NSNull null];
+                break;
+            }
+            case 7:   // set
+            case 9: { // array
+                id items = map[@"a"];
+                value = [self list:[items isKindOfClass:[NSArray class]] ? items : @[]];
+                break;
+            }
+            case 10:  // object
+            case 11:  // null-prototype object
+                value = [self properties:map[@"p"] keyNodes:NO];
+                break;
+            case 8:   // Map
+                value = [self properties:map[@"e"] keyNodes:YES];
+                break;
+            default:  // promises, streams, symbols, dangling references: no schedule data
+                value = [NSNull null];
+                break;
+        }
+        if (nodeId) {
+            _byId[nodeId] = @[value, @(_nodes - start + 1)];
+        }
+        return value;
+    } @finally {
+        _depth--;
     }
-    if (nodeId) {
-        _byId[nodeId] = @[value, @(_nodes - start + 1)];
-    }
-    return value;
 }
 
 - (NSArray *)list:(NSArray *)items {
     NSMutableArray *out = [NSMutableArray arrayWithCapacity:items.count];
     for (id item in items) {
-        [out addObject:[self decode:item]];
+        id decoded = [self decode:item];
+        if (!decoded) {
+            break; // depth guard tripped: decode: returned nil
+        }
+        [out addObject:decoded];
         if (_failed) {
             break;
         }
@@ -136,13 +153,16 @@ static const unichar KTKRaw[10] = {'\\', '"', '\n', '\r', '\b', '\t', '\f', 0x20
             if ([decoded isKindOfClass:[NSString class]]) {
                 key = decoded;
             } else if ([decoded isKindOfClass:[NSNumber class]]) {
-                key = [decoded stringValue];
+                key = [NSString stringWithFormat:@"%lld", [decoded longLongValue]];
             }
         } else if ([keys[i] isKindOfClass:[NSString class]]) {
             key = [KTKSeroval unescape:keys[i]];
         }
         if (key) {
-            out[key] = [self decode:values[i]];
+            id value = [self decode:values[i]];
+            if (value) {
+                out[key] = value;
+            }
         }
     }
     return out;
@@ -228,7 +248,7 @@ static const unichar KTKRaw[10] = {'\\', '"', '\n', '\r', '\b', '\t', '\f', 0x20
 
 + (id)decode:(id)raw error:(NSError **)error {
     id root = raw;
-    if ([raw isKindOfClass:[NSDictionary class]] && [raw[@"t"] isKindOfClass:[NSDictionary class]] && raw[@"f"]) {
+    if ([raw isKindOfClass:[NSDictionary class]] && [raw[@"t"] isKindOfClass:[NSDictionary class]] && raw[@"f"] != nil) {
         root = raw[@"t"];
     }
     KTKSerovalDecoder *decoder = [KTKSerovalDecoder new];

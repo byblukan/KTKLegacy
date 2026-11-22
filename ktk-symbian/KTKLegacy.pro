@@ -6,7 +6,7 @@
 
 TEMPLATE = app
 TARGET = KTKLegacy
-VERSION = 1.1.0
+VERSION = 1.1.1
 
 QT += core gui network declarative
 

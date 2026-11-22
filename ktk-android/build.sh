@@ -11,8 +11,8 @@ BT=${BUILD_TOOLS:-$(ls -d "$SDK"/build-tools/* 2>/dev/null | sort -V | tail -n 1
 PLATFORM=${PLATFORM:-$SDK/platforms/android-16/android.jar}
 MIN_SDK=16
 TARGET_SDK=28
-VERSION_CODE=2
-VERSION_NAME=1.1.0
+VERSION_CODE=3
+VERSION_NAME=1.1.1
 KEYSTORE=${KEYSTORE:-$HOME/.android/debug.keystore}
 OUT=build
 

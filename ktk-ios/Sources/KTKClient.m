@@ -2,6 +2,9 @@
 #import "KTKCalendar.h"
 #import "KTKSeroval.h"
 #import <CommonCrypto/CommonDigest.h>
+#include <ctype.h>
+#include <errno.h>
+#include <stdlib.h>
 
 NSString *const KTKSessionDidChangeNotification = @"KTKSessionDidChange";
 
@@ -62,6 +65,15 @@ static NSString *KTKString(id value) {
     return [value isKindOfClass:[NSString class]] ? value : nil;
 }
 
+/// Completions and the session notification are always delivered on the main thread.
+static void KTKRunOnMain(void (^block)(void)) {
+    if ([NSThread isMainThread]) {
+        block();
+    } else {
+        dispatch_async(dispatch_get_main_queue(), block);
+    }
+}
+
 static NSString *KTKFingerprint(NSString *login) {
     NSMutableData *input = [[login dataUsingEncoding:NSUTF8StringEncoding] mutableCopy];
     [input appendData:[KTKDeviceName dataUsingEncoding:NSUTF8StringEncoding]];
@@ -92,6 +104,21 @@ static NSError *KTKServerError(id value) {
     return KTKMakeError(KTKErrorServer, KTKString(details[@"message"]) ?: KTKString(error));
 }
 
+/// A 403 from the site's WAF is not a session expiry; only an in-band auth error is.
+static BOOL KTKIsAuthErrorBody(NSData *body) {
+    if (!body.length) {
+        return NO;
+    }
+    id raw = [NSJSONSerialization JSONObjectWithData:body options:NSJSONReadingAllowFragments error:NULL];
+    if (!raw) {
+        return NO;
+    }
+    NSError *ignored = nil;
+    id decoded = [KTKSeroval decode:raw error:&ignored];
+    NSError *server = KTKServerError(decoded);
+    return server && server.code == KTKErrorLoginRequired;
+}
+
 static BOOL KTKShouldRediscover(NSError *error) {
     if (error.code == KTKErrorBadResponse) {
         return YES;
@@ -105,6 +132,45 @@ static NSError *KTKStatusError(NSInteger status) {
         KTKHTTPStatusKey: @(status),
         NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Сайт ответил ошибкой %ld.", (long)status],
     }];
+}
+
+/// yyyy-MM-dd, as required by the Android and WP clients.
+static BOOL KTKValidWeekStart(NSString *weekStart) {
+    if (weekStart.length != 10) {
+        return NO;
+    }
+    NSCharacterSet *digits = [NSCharacterSet decimalDigitCharacterSet];
+    for (NSUInteger i = 0; i < 10; i++) {
+        unichar c = [weekStart characterAtIndex:i];
+        if (i == 4 || i == 7) {
+            if (c != '-') {
+                return NO;
+            }
+        } else if (![digits characterIsMember:c]) {
+            return NO;
+        }
+    }
+    return YES;
+}
+
+/// Max-Age with garbage must not delete the cookie (Android/WP ignore it).
+static BOOL KTKMaxAgeExpired(NSString *attribute) {
+    NSString *text = [[attribute substringFromIndex:8] stringByTrimmingCharactersInSet:
+                      [NSCharacterSet whitespaceCharacterSet]];
+    const char *chars = [text UTF8String];
+    if (!chars) {
+        return NO;
+    }
+    char *end = NULL;
+    errno = 0;
+    long value = strtol(chars, &end, 10);
+    if (end == chars || errno == ERANGE) {
+        return NO;
+    }
+    while (*end && isspace((unsigned char)*end)) {
+        end++;
+    }
+    return *end == '\0' && value <= 0;
 }
 
 /// Merge Set-Cookie headers into a jar; returns whether anything changed.
@@ -124,7 +190,7 @@ static BOOL KTKAbsorbCookies(NSArray *lines, NSMutableDictionary *jar) {
             BOOL expired = value.length == 0;
             for (NSUInteger i = 1; i < parts.count; i++) {
                 NSString *attribute = [[parts[i] stringByTrimmingCharactersInSet:space] lowercaseString];
-                if ([attribute hasPrefix:@"max-age="] && [[attribute substringFromIndex:8] integerValue] <= 0) {
+                if ([attribute hasPrefix:@"max-age="] && KTKMaxAgeExpired(attribute)) {
                     expired = YES;
                 }
             }
@@ -313,7 +379,11 @@ NSString *KTKErrorText(NSError *error) {
         return nil;
     }
     [self absorbCookies:response.setCookies into:jar];
-    if (fn != KTKFnSignIn && (response.status == 401 || response.status == 403)) {
+    if (fn != KTKFnSignIn && response.status == 401) {
+        *error = KTKMakeError(KTKErrorLoginRequired, nil);
+        return nil;
+    }
+    if (fn != KTKFnSignIn && response.status == 403 && KTKIsAuthErrorBody(response.body)) {
         *error = KTKMakeError(KTKErrorLoginRequired, nil);
         return nil;
     }
@@ -450,10 +520,16 @@ static NSString *KTKFindSubgroup(id value) {
     @synchronized (self) {
         _session = nil;
         _jar = [NSMutableDictionary dictionary];
+        // Forget resolved server function addresses: they may change on the next site deploy,
+        // and a stale path must not survive into a new session.
+        _paths = [NSMutableDictionary dictionary];
+        [[NSUserDefaults standardUserDefaults] setObject:nil forKey:KTKPathsDefaultsKey];
     }
     [KTKSession clear];
     [self forgetCaches];
-    [[NSNotificationCenter defaultCenter] postNotificationName:KTKSessionDidChangeNotification object:self];
+    KTKRunOnMain(^{
+        [[NSNotificationCenter defaultCenter] postNotificationName:KTKSessionDidChangeNotification object:self];
+    });
 }
 
 - (void)signOut {
@@ -526,6 +602,16 @@ static NSString *KTKFindSubgroup(id value) {
                 error:NULL];
 }
 
+/// False only when the personal timetable of the current week is refused as well.
+- (BOOL)sessionAlive {
+    NSError *failure = nil;
+    id probe = [self call:KTKFnStudent fields:@[@[@"weekStart", [KTKCalendar currentWeekStart]]] jar:nil error:&failure];
+    if (probe) {
+        failure = KTKServerError(probe);
+    }
+    return !(failure && failure.code == KTKErrorLoginRequired);
+}
+
 - (NSDictionary *)fetchWeek:(NSString *)weekStart session:(KTKSession *)session error:(NSError **)error {
     BOOL teacher = !session.student;
     BOOL useGroup = session.student && session.group > 0
@@ -533,13 +619,19 @@ static NSString *KTKFindSubgroup(id value) {
     NSArray *fields = useGroup
         ? @[@[@"groupId", [NSString stringWithFormat:@"%lld", session.group]], @[@"weekStart", weekStart]]
         : @[@[@"weekStart", weekStart]];
-    id value = [self call:useGroup ? KTKFnGroup : (teacher ? KTKFnTeacher : KTKFnStudent) fields:fields jar:nil error:error];
-    if (!value) {
-        return nil;
+    NSError *failure = nil;
+    id value = [self call:useGroup ? KTKFnGroup : (teacher ? KTKFnTeacher : KTKFnStudent) fields:fields jar:nil error:&failure];
+    if (value) {
+        failure = KTKServerError(value);
     }
-    NSError *server = KTKServerError(value);
-    if (server) {
-        *error = server;
+    if (failure) {
+        // Like the bot: a refused group timetable may be a permission matter, so the session is
+        // dropped only when the personal timetable is refused too.
+        if (useGroup && failure.code == KTKErrorLoginRequired && [self sessionAlive]) {
+            *error = KTKMakeError(KTKErrorHTTPStatus, @"Сайт не дал доступ к расписанию группы. Выберите свою подгруппу.");
+        } else {
+            *error = failure;
+        }
         return nil;
     }
     if (![KTKDict(value)[@"days"] isKindOfClass:[NSArray class]]) {
@@ -579,26 +671,29 @@ static NSString *KTKFindSubgroup(id value) {
     for (KTKLesson *lesson in wanted) {
         dispatch_semaphore_wait(slots, DISPATCH_TIME_FOREVER);
         dispatch_group_async(group, queue, ^{
-            NSArray *fields = @[@[@"weekStart", weekStart], @[@"journalId", @(lesson.journalId)]];
-            NSMutableDictionary *entry = [NSMutableDictionary dictionary];
-            if (lesson.hasHomework) {
-                id value = [self call:KTKFnStudentHomework fields:fields jar:nil error:NULL];
-                if (KTKDict(value) && !KTKServerError(value)) {
-                    entry[@"homework"] = value;
+            @try {
+                NSArray *fields = @[@[@"weekStart", weekStart], @[@"journalId", @(lesson.journalId)]];
+                NSMutableDictionary *entry = [NSMutableDictionary dictionary];
+                if (lesson.hasHomework) {
+                    id value = [self call:KTKFnStudentHomework fields:fields jar:nil error:NULL];
+                    if (KTKDict(value) && !KTKServerError(value)) {
+                        entry[@"homework"] = value;
+                    }
                 }
-            }
-            if (lesson.remote) {
-                id value = [self call:KTKFnStudentWebinar fields:fields jar:nil error:NULL];
-                if (KTKDict(value) && !KTKServerError(value)) {
-                    entry[@"webinar"] = value;
+                if (lesson.remote) {
+                    id value = [self call:KTKFnStudentWebinar fields:fields jar:nil error:NULL];
+                    if (KTKDict(value) && !KTKServerError(value)) {
+                        entry[@"webinar"] = value;
+                    }
                 }
-            }
-            if (entry.count) {
-                @synchronized (extras) {
-                    extras[[NSString stringWithFormat:@"%lld", lesson.journalId]] = entry;
+                if (entry.count) {
+                    @synchronized (extras) {
+                        extras[[NSString stringWithFormat:@"%lld", lesson.journalId]] = entry;
+                    }
                 }
+            } @finally {
+                dispatch_semaphore_signal(slots);
             }
-            dispatch_semaphore_signal(slots);
         });
     }
     dispatch_group_wait(group, DISPATCH_TIME_FOREVER);
@@ -607,8 +702,10 @@ static NSString *KTKFindSubgroup(id value) {
 
 - (void)loadWeek:(NSString *)weekStart completion:(void (^)(KTKWeek *, NSError *))completion {
     KTKSession *session = self.session;
-    if (!session) {
-        completion(nil, KTKMakeError(KTKErrorLoginRequired, nil));
+    if (!session || !KTKValidWeekStart(weekStart)) {
+        KTKRunOnMain(^{
+            completion(nil, KTKMakeError(KTKErrorLoginRequired, nil));
+        });
         return;
     }
     NSString *scope = [self weekScope:session];
@@ -653,13 +750,22 @@ static NSString *KTKFindSubgroup(id value) {
 
 - (void)downloadFile:(KTKFile *)file completion:(void (^)(NSString *, NSError *))completion {
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        NSString *name = [[file.fileName componentsSeparatedByCharactersInSet:
-                           [NSCharacterSet characterSetWithCharactersInString:@"/:\\"]] componentsJoinedByString:@"_"];
+        NSMutableCharacterSet *unsafe = [[NSCharacterSet characterSetWithCharactersInString:@"/:\\"] mutableCopy];
+        [unsafe addCharactersInRange:NSMakeRange(0, 1)]; // NUL is a path-component terminator too
+        NSString *name = [[file.fileName componentsSeparatedByCharactersInSet:unsafe] componentsJoinedByString:@"_"];
         while ([name hasPrefix:@"."]) {
             name = [name substringFromIndex:1];
         }
-        if (name.length > 120) {
-            name = [name substringFromIndex:name.length - 120];
+        // Preserve the extension so different files don't collide after truncation.
+        NSRange dotRange = [name rangeOfString:@"." options:NSBackwardsSearch];
+        NSString *base = (dotRange.location != NSNotFound) ? [name substringToIndex:dotRange.location] : name;
+        NSString *ext  = (dotRange.location != NSNotFound) ? [name substringFromIndex:dotRange.location] : @"";
+        if (base.length + ext.length > 120) {
+            base = [base substringToIndex:120 - ext.length];
+        }
+        name = [base stringByAppendingString:ext];
+        while ([name hasPrefix:@"."]) {
+            name = [name substringFromIndex:1];
         }
         if (!name.length) {
             name = [NSString stringWithFormat:@"file_%lld", file.fileId];
@@ -689,7 +795,8 @@ static NSString *KTKFindSubgroup(id value) {
             request.outputPath = partial;
             KTKHTTPResponse *response = [self send:request idempotent:NO error:&error];
             if (response && response.status != 200) {
-                error = (response.status == 401 || response.status == 403)
+                // A 403 here is a plain HTTP error, not a session expiry (WP KtkClient.cs).
+                error = response.status == 401
                     ? KTKMakeError(KTKErrorLoginRequired, nil) : KTKStatusError(response.status);
             }
             if (!error) {

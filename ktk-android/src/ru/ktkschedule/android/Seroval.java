@@ -123,6 +123,7 @@ final class Seroval {
     private static final class Decoder {
         private final Map<Long, Object[]> byId = new HashMap<Long, Object[]>(); // id -> {value, expanded node count}
         private int nodes;
+        private int depth;
         boolean failed;
 
         private boolean charge(int count) {
@@ -134,6 +135,19 @@ final class Seroval {
         }
 
         Object decode(Object node) {
+            depth++;
+            try {
+                if (depth > 200) {
+                    failed = true;
+                    return null;
+                }
+                return decodeNode(node);
+            } finally {
+                depth--;
+            }
+        }
+
+        private Object decodeNode(Object node) {
             if (failed || !charge(1)) {
                 return null;
             }

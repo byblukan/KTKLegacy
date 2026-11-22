@@ -132,6 +132,8 @@ private slots:
     void deliverJob(QObject *job);
     void onNetworkOpened();
     void onNetworkError();
+    /// The client lost every cookie: finish the sign-out on the UI thread so QML re-routes.
+    void onSessionExpired();
 
 private:
     void startJob(Job *job);
@@ -159,6 +161,7 @@ private:
     Lesson m_lesson;          // the lesson page's lesson
     bool m_lessonTeacher;
     int m_downloadingFile;
+    int m_downloadToken;      // last issued download token; stale jobs must not clear the spinner
 
     QNetworkConfigurationManager *m_netManager;
     QNetworkSession *m_netSession;

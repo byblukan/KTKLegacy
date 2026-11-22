@@ -168,8 +168,9 @@ namespace KTKLegacy
             {
                 LessonRow row = (LessonRow)lb.SelectedItem;
                 lb.SelectedItem = null;
+                // Empty-state rows are not lessons and have no detail page.
                 // _week must belong to the week on screen (it may still be the previous one)
-                if (_week != null && _week.WeekStart == _weekStart)
+                if (row.LessonIndex >= 0 && _week != null && _week.WeekStart == _weekStart)
                 {
                     KtkClient.Shared.SetShownWeek(_week);
                     NavigationService.Navigate(
@@ -188,7 +189,7 @@ namespace KTKLegacy
             var session = KtkClient.Shared.Session;
             if (session != null && session.Student)
             {
-                string sub = session.Subgroup ?? "left";
+                string sub = session.Subgroup ?? ""; // "" = not chosen: no checkmark
 
                 var mi1 = new ApplicationBarMenuItem((sub == "left" ? "✓ " : "") + "1 подгруппа");
                 mi1.Click += (s, e) => SetSubgroup("left");
@@ -319,12 +320,19 @@ namespace KTKLegacy
             _gradesRows.Clear();
             _allLessons.Clear();
 
-            if (week == null) { UpdateMenu(); return; }
+            if (week == null)
+            {
+                string noData = _loading ? "Загрузка…" : "Нет данных.";
+                _pairsRows.Add(MessageRow(noData));
+                _gradesRows.Add(MessageRow(noData));
+                UpdateMenu();
+                return;
+            }
             var allLessons = week.AllLessons();
             _allLessons    = allLessons;
 
             var session = KtkClient.Shared.Session;
-            string selectedSubgroup = session != null ? session.Subgroup : "left";
+            string selectedSubgroup = session != null ? session.Subgroup : ""; // "" = show all
 
             string prevPairsDay  = null;
             string prevGradesDay = null;
@@ -341,14 +349,14 @@ namespace KTKLegacy
                     if (Week.MatchesSubgroup(l, selectedSubgroup, week.Teacher))
                     {
                         // Pairs tab
-                        var pRow = MakePairsRow(l, globalIndex, day.Date != prevPairsDay ? dayTitle : null);
+                        var pRow = MakePairsRow(l, globalIndex, day.Date != prevPairsDay ? dayTitle : null, week.Teacher);
                         _pairsRows.Add(pRow);
                         prevPairsDay = day.Date;
 
                         // Grades tab
                         if (l.HasGrade())
                         {
-                            var gRow = MakePairsRow(l, globalIndex, day.Date != prevGradesDay ? dayTitle : null);
+                            var gRow = MakePairsRow(l, globalIndex, day.Date != prevGradesDay ? dayTitle : null, week.Teacher);
                             _gradesRows.Add(gRow);
                             prevGradesDay = day.Date;
                         }
@@ -356,10 +364,18 @@ namespace KTKLegacy
                     globalIndex++;
                 }
             }
+            // Empty state, as in Android's WeekActivity.rebuild().
+            if (_pairsRows.Count == 0)  _pairsRows.Add(MessageRow("Пар нет"));
+            if (_gradesRows.Count == 0) _gradesRows.Add(MessageRow("На этой неделе оценок нет"));
             UpdateMenu();
         }
 
-        private static LessonRow MakePairsRow(Lesson l, int index, string dayHeader)
+        private static LessonRow MessageRow(string text)
+        {
+            return new LessonRow { LessonIndex = -1, Discipline = text };
+        }
+
+        private static LessonRow MakePairsRow(Lesson l, int index, string dayHeader, bool teacher)
         {
             // Details line: time + hall + teacher
             var parts = new List<string>();
@@ -376,7 +392,7 @@ namespace KTKLegacy
                 DayHeader   = dayHeader,
                 Discipline  = l.Discipline,
                 Details     = string.Join(" · ", parts),
-                Badge       = l.BadgeText(),
+                Badge       = teacher ? null : l.BadgeText(),
             };
         }
     }

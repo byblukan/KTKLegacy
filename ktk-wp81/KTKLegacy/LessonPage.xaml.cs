@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.IsolatedStorage;
+using System.Runtime.InteropServices.WindowsRuntime;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
@@ -114,7 +115,7 @@ namespace KTKLegacy
                 {
                     Content            = l.Webinar,
                     HorizontalAlignment = HorizontalAlignment.Left,
-                    NavigateUri        = TryUri(l.Webinar),
+                    // No NavigateUri: the Click handler opens the browser once via WebBrowserTask.
                     Margin             = new Thickness(0, 0, 0, 4),
                 };
                 link.Click += (s, e) => OpenUri(l.Webinar);

@@ -189,7 +189,16 @@ QString TaskFile::safeName() const
     name.replace(QRegExp(QLatin1String("[/:\\\\\\x0000<>\"|?*]")), QLatin1String("_"));
     while (name.startsWith(QLatin1Char('.'))) name.remove(0, 1);
     name = name.trimmed();
-    if (name.size() > 120) name = name.right(120);
+    // Preserve the extension so different files don't collide after truncation.
+    int dot = name.lastIndexOf(QLatin1Char('.'));
+    QString base = (dot > 0) ? name.left(dot) : name;
+    QString ext  = (dot > 0) ? name.mid(dot) : QString();
+    if (base.size() + ext.size() > 120) {
+        base = base.left(120 - ext.size());
+    }
+    name = base + ext;
+    while (name.startsWith(QLatin1Char('.'))) name.remove(0, 1);
+    name = name.trimmed();
     return name.isEmpty() ? QString::fromLatin1("file_%1").arg(fileId) : name;
 }
 
@@ -250,6 +259,7 @@ QString Lesson::subgroupText() const
     const QString s = Week::personalSubgroup(subgroup);
     if (s == QLatin1String("left")) return QString::fromUtf8("1 подгруппа");
     if (s == QLatin1String("right")) return QString::fromUtf8("2 подгруппа");
+    if (s == QLatin1String("all")) return QString::fromUtf8("Обе подгруппы");
     return QString();
 }
 

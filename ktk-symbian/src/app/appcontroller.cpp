@@ -7,6 +7,7 @@
 #include <QDesktopServices>
 #include <QDir>
 #include <QEvent>
+#include <QFile>
 #include <QFileInfo>
 #include <QNetworkConfigurationManager>
 #include <QNetworkSession>
@@ -123,7 +124,7 @@ void Job::run()
             week = client->loadWeek(weekStart, &error);
             break;
         case FileJob:
-            path = client->downloadFile(file);
+            path = client->downloadFile(file, generation);
             break;
         case LogoutJob:
             client->logoutOnSite(oldSession);
@@ -141,11 +142,13 @@ void Job::run()
 
 AppController::AppController(QObject *parent)
     : QObject(parent), m_loading(false), m_gradesMode(false), m_scrolledToToday(false), m_signingIn(false),
-      m_weekToken(0), m_rowsDay(0), m_lessonTeacher(false), m_downloadingFile(-1), m_netManager(0), m_netSession(0),
-      m_networkReady(false), m_networkOpening(false)
+      m_weekToken(0), m_rowsDay(0), m_lessonTeacher(false), m_downloadingFile(-1), m_downloadToken(0),
+      m_netManager(0), m_netSession(0), m_networkReady(false), m_networkOpening(false)
 {
     const QString data = dataDirectory();
     m_client = new Client(data, filesDirectory(data));
+    // sessionExpired() comes from a worker thread, so the slot runs on the UI thread.
+    connect(m_client, SIGNAL(sessionExpired()), this, SLOT(onSessionExpired()), Qt::QueuedConnection);
     m_weekStart = CollegeCalendar::currentWeekStart();
     qApp->installEventFilter(this);
 }
@@ -283,7 +286,7 @@ bool AppController::eventFilter(QObject *watched, QEvent *event)
 void AppController::signIn(const QString &login, const QString &password)
 {
     if (m_signingIn) return;
-    if (login.trimmed().isEmpty() || password.trimmed().isEmpty()) {
+    if (login.trimmed().isEmpty() || password.isEmpty()) {
         emit signInFailed(QString::fromUtf8("Введите логин и пароль."));
         return;
     }
@@ -310,6 +313,19 @@ void AppController::finishSignIn(Job *job)
     m_gradesMode = false;
     emit sessionChanged();
     showWeek(CollegeCalendar::currentWeekStart());
+}
+
+void AppController::onSessionExpired()
+{
+    // The site dropped every cookie while a job was in flight; the session is already gone on
+    // disk. Finish the local sign-out here, on the UI thread, so the main QML calls route().
+    m_client->signOutLocally();
+    m_week = Week();
+    m_error = KtkError();
+    ++m_weekToken;
+    setLoading(false);
+    rebuild();
+    emit sessionChanged();
 }
 
 void AppController::signOut()
@@ -529,18 +545,25 @@ void AppController::downloadFile(int fileIndex)
 {
     if (m_downloadingFile >= 0 || fileIndex < 0 || fileIndex >= m_lesson.files.size()) return;
     m_downloadingFile = fileIndex;
+    m_downloadToken = ++m_downloadToken;
     emit downloadChanged();
     Job *job = new Job(Job::FileJob, m_client);
     job->file = m_lesson.files.at(fileIndex);
     job->fileIndex = fileIndex;
+    job->token = m_downloadToken;
     startJob(job);
 }
 
 void AppController::finishFile(Job *job)
 {
-    if (m_downloadingFile == job->fileIndex) {
+    if (job->token == m_downloadToken) {
         m_downloadingFile = -1;
         emit downloadChanged();
+    }
+    // Signed out while the file was in flight: discard it, never open it.
+    if (m_client->sessionGeneration() != job->generation) {
+        if (!job->path.isEmpty()) QFile::remove(job->path);
+        return;
     }
     if (job->error.isError()) {
         emit notice(job->error.text());

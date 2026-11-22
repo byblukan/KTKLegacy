@@ -152,6 +152,9 @@ final class CollegeCalendar {
 
     /** "2026-11-05T18:59:00.000Z" -> "05.11.2026 23:59" (college time); unknown formats unchanged. */
     static String deadlineText(String raw) {
+        if (raw == null) {
+            return null;
+        }
         String text = raw.trim();
         Long day = parse(text);
         if (day == null) {

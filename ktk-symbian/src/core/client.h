@@ -15,6 +15,7 @@
 #include <QHash>
 #include <QMap>
 #include <QMutex>
+#include <QObject>
 #include <QString>
 #include <QVariant>
 
@@ -38,8 +39,10 @@ struct Session
     static Session fromVariant(const QVariant &v);
 };
 
-class Client
+class Client : public QObject
 {
+    Q_OBJECT
+
 public:
     enum Fn { SignIn, Student, Teacher, Group, Logout, StudentHomework, StudentWebinar, FnCount };
 
@@ -73,8 +76,15 @@ public:
     QString weekScope(const Session &session) const;
 
     /// Downloads (or finds already downloaded) a task file; returns its path. Throws KtkError.
-    QString downloadFile(const TaskFile &file);
+    /// `generation` is the session the download was started for: a sign-out mid-flight must not
+    /// publish a freshly downloaded file.
+    QString downloadFile(const TaskFile &file, int generation);
     QString filesDirectory() const { return m_filesDir; }
+
+signals:
+    /// Every cookie expired while a request was in flight: the session is gone (also on disk).
+    /// Emitted from the worker thread; connect with Qt::QueuedConnection.
+    void sessionExpired();
 
 private:
     friend class ClientProbe;   // the desktop harness (tools/ktk-cli)
@@ -90,6 +100,8 @@ private:
                       QMap<QString, QString> *jar);
     QVariant call(Http &http, Fn fn, const Seroval::Fields &fields, QMap<QString, QString> *jar = 0);
     QVariant quietCall(Http &http, Fn fn, const Seroval::Fields &fields);
+    /// False only when the personal timetable of the current week is refused as well.
+    bool sessionAlive(Http &http);
     QVariantMap fetchWeek(Http &http, const QString &weekStart, const Session &session);
     QVariantMap extras(Http &http, const QVariantMap &payload, const QString &weekStart);
     void saveWeekPayload(const QVariantMap &payload, const QString &weekStart, const QString &scope = QString());

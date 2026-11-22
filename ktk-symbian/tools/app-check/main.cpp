@@ -17,6 +17,7 @@ int main(int argc, char *argv[])
     controller.start();
     QTimer::singleShot(30000, &app, SLOT(quit()));
     app.exec();
-    QTextStream(stdout) << (probe.loginRequiredSeen && !controller.signedIn() ? "PASS\n" : "FAIL\n");
-    return probe.loginRequiredSeen ? 0 : 1;
+    const bool pass = probe.loginRequiredSeen && !controller.signedIn();
+    QTextStream(stdout) << (pass ? "PASS\n" : "FAIL\n");
+    return pass ? 0 : 1;
 }

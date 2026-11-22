@@ -5,6 +5,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 final class Week {
@@ -42,7 +43,7 @@ final class Week {
         if (value == null) {
             return null;
         }
-        String clean = value.toLowerCase().replace(" ", "").replace("_", "").replace("-", "");
+        String clean = value.toLowerCase(Locale.ROOT).replace(" ", "").replace("_", "").replace("-", "");
         if (clean.equals("1") || clean.equals("left") || clean.equals("first") || clean.equals("one")
                 || clean.equals("первая") || clean.equals("первый") || clean.equals("1я") || clean.equals("1ая")
                 || clean.equals("1ый") || clean.equals("1подгруппа") || clean.equals("1яподгруппа")
@@ -76,7 +77,7 @@ final class Week {
     }
 
     static boolean matchesSubgroup(Lesson lesson, String selectedSubgroup, boolean teacher) {
-        if (teacher || selectedSubgroup == null || "all".equals(selectedSubgroup)) {
+        if (teacher || selectedSubgroup == null || selectedSubgroup.isEmpty() || "all".equals(selectedSubgroup)) {
             return true;
         }
         String sub = personalSubgroup(lesson.subgroup);
@@ -84,7 +85,7 @@ final class Week {
     }
 
     static List<Lesson> visibleLessons(List<Lesson> lessons, String selectedSubgroup, boolean teacher) {
-        if (teacher || selectedSubgroup == null || "all".equals(selectedSubgroup)) {
+        if (teacher || selectedSubgroup == null || selectedSubgroup.isEmpty() || "all".equals(selectedSubgroup)) {
             return lessons;
         }
         List<Lesson> out = new ArrayList<Lesson>();

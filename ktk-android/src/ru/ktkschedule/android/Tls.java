@@ -177,7 +177,10 @@ final class Tls {
                     suites.add(suite);
                 }
             }
-            suites.addAll(Arrays.asList(ssl.getEnabledCipherSuites()));
+            if (suites.isEmpty()) {
+                socket.close();
+                throw new IOException("устройство не поддерживает шифры ECDSA");
+            }
             ssl.setEnabledCipherSuites(suites.toArray(new String[suites.size()]));
             return ssl;
         }

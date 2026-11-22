@@ -151,7 +151,11 @@ namespace KTKLegacy
                     }
                 }
             }
-            catch { }
+            catch
+            {
+                // IsolatedStorage may be unavailable or the file corrupted; fall back to default
+                // server function paths and re-discover on the next call.
+            }
         }
 
         private void SavePaths()
@@ -165,7 +169,11 @@ namespace KTKLegacy
                 using (var writer = new StreamWriter(stream))
                     writer.Write(Json.Serialize(d));
             }
-            catch { }
+            catch
+            {
+                // IsolatedStorage may be unavailable or the file corrupted; path updates are
+                // non-fatal: defaults are used until the next successful save.
+            }
         }
 
         private string PathFor(Fn fn)
@@ -243,7 +251,9 @@ namespace KTKLegacy
 
         private Dictionary<string, string> CurrentJar()
         {
-            lock (_sessionLock) return new Dictionary<string, string>(_jar);
+            // Return the live jar (as Android's currentJar() does): cookies rotated by the
+            // site must be visible to every following request, not only written to disk.
+            lock (_sessionLock) return _jar;
         }
 
         private void AbsorbCookies(List<string> lines, Dictionary<string, string> jar)
@@ -278,7 +288,9 @@ namespace KTKLegacy
             if (!changed) return;
             lock (_sessionLock)
             {
-                if (_session != null)
+                // Only the live jar is the session's cookie store; a sign-in uses a fresh
+                // temporary jar and saves its cookies explicitly below.
+                if (_session != null && jar == _jar)
                 {
                     lock (jar) _session.Cookies = new Dictionary<string, string>(jar);
                     _session.Save();
@@ -474,10 +486,11 @@ namespace KTKLegacy
             session.TeacherHash = session.Student ? "" : (hash ?? "teacher");
             session.Branch      = Json.Str(user.ContainsKey("branch") ? user["branch"] : null) ?? "";
             string detectedSubgroup = FindSubgroup(user);
-            session.PersonalSubgroup = !string.IsNullOrEmpty(detectedSubgroup) ? detectedSubgroup : "left";
-            session.Subgroup         = session.PersonalSubgroup;
+            // "" means unknown: LoadWeek infers it from the first personal week.
+            session.PersonalSubgroup = detectedSubgroup ?? "";
+            session.Subgroup         = detectedSubgroup ?? "";
 
-            ForgetCaches();
+            await ForgetCachesAsync();
             session.Save();
             lock (_sessionLock) { _session = session; _jar = new Dictionary<string, string>(session.Cookies); }
             return session;
@@ -520,7 +533,7 @@ namespace KTKLegacy
             {
                 if (_session != null)
                 {
-                    _session.Subgroup = subgroup ?? "left";
+                    _session.Subgroup = subgroup ?? "";
                     _session.Save();
                 }
             }
@@ -528,9 +541,15 @@ namespace KTKLegacy
 
         public void SignOutLocally()
         {
-            lock (_sessionLock) { _session = null; _jar = new Dictionary<string, string>(); }
+            lock (_sessionLock) {
+                _session = null;
+                _jar = new Dictionary<string, string>();
+                // Forget resolved server function addresses: they may change on the next site deploy,
+                // and a stale path must not survive into a new session.
+                _paths.Clear();
+            }
             KtkSession.Clear();
-            Task.Run(() => ForgetCaches());
+            // Callers await ForgetCachesAsync() themselves (SignOut), so no fire-and-forget here.
         }
 
         public async Task SignOut()
@@ -538,6 +557,7 @@ namespace KTKLegacy
             KtkSession old;
             lock (_sessionLock) old = _session;
             SignOutLocally();
+            await ForgetCachesAsync(); // main path: finish wiping caches before returning
             if (old != null && old.SessionId.Length > 0)
             {
                 var oldJar = new Dictionary<string, string>(old.Cookies);
@@ -554,12 +574,12 @@ namespace KTKLegacy
         /// <summary>Folder (in LocalFolder) holding the copies handed to the system file handler.</summary>
         public const string OpenDirectory = "ktk-open";
 
-        private void ForgetCaches()
+        private async Task ForgetCachesAsync()
         {
             DeleteIsoDir("ktk-weeks");
             DeleteIsoDir("ktk-files");
             DeleteIsoDir(OpenDirectory);
-            var ignored = DeleteOpenedFiles();
+            await DeleteOpenedFiles();
         }
 
         // Files are stored as ktk-files/<fileId>/<name>, so the delete has to recurse.
@@ -607,7 +627,8 @@ namespace KTKLegacy
             if (session != null && session.Student && session.Group > 0)
             {
                 string personal = !string.IsNullOrEmpty(session.PersonalSubgroup) ? session.PersonalSubgroup : "left";
-                if (session.Subgroup == "all" || session.Subgroup != personal)
+                if (!string.IsNullOrEmpty(session.Subgroup)
+                    && (session.Subgroup == "all" || session.Subgroup != personal))
                 {
                     return "group-" + session.Group;
                 }
@@ -672,7 +693,10 @@ namespace KTKLegacy
         {
             bool teacher = !session.Student;
             string personal = !string.IsNullOrEmpty(session.PersonalSubgroup) ? session.PersonalSubgroup : "left";
+            // Empty subgroup means "not chosen": fetch the personal week so that its
+            // subgroups can be inferred. "all" or another subgroup means the group week.
             bool useGroup = session.Student && session.Group > 0
+                && !string.IsNullOrEmpty(session.Subgroup)
                 && (session.Subgroup == "all" || session.Subgroup != personal);
             var fields = useGroup
                 ? new[]{ new KeyValuePair<string, object>("groupId", session.Group.ToString()), new KeyValuePair<string, object>("weekStart", weekStart) }
@@ -796,6 +820,7 @@ namespace KTKLegacy
             string personal = !string.IsNullOrEmpty(session.PersonalSubgroup) ? session.PersonalSubgroup : "left";
             string scope = WeekScope(session);
             bool useGroup = session.Student && session.Group > 0
+                && !string.IsNullOrEmpty(session.Subgroup)
                 && (session.Subgroup == "all" || session.Subgroup != personal);
 
             KtkException error = null;
@@ -843,9 +868,13 @@ namespace KTKLegacy
             {
                 lock (_sessionLock)
                 {
-                    if (_session == session) { _session = null; _jar = new Dictionary<string, string>(); }
+                    if (_session == session)
+                    {
+                        _session = null;
+                        _jar = new Dictionary<string, string>();
+                        KtkSession.Clear(); // never clear a session a newer login has replaced
+                    }
                 }
-                KtkSession.Clear();
             }
             return new WeekResult(week, error);
         }
